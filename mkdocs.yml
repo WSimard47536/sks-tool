@@ -1,0 +1,11 @@
+site_name: "SKS Tool"
+site_description: "Templates and validators for Structured Knowledge Standard (SKS) documents"
+
+theme:
+  name: material
+
+nav:
+  - Home: index.md
+
+plugins:
+  - mkdocstrings

@@ -1,0 +1,15 @@
+# Normalize line endings so a mixed Windows/macOS/Linux team doesn't get
+# noisy whole-file diffs or "LF will be replaced by CRLF" warnings.
+# Text files are stored with LF in the repo and checked out as-is.
+* text=auto eol=lf
+
+# Jupyter notebooks are text (JSON) but must stay LF to keep diffs clean.
+*.ipynb text eol=lf
+
+# Binary assets: never touch line endings or attempt text diffs.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
