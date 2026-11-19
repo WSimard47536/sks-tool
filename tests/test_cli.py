@@ -1,11 +1,17 @@
 import json
+import os
+import subprocess
+import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
+from sks_tool import pipeline
 from sks_tool.cli import app
 from sks_tool.doctypes import DOC_TYPES
+from sks_tool.findings import ValidatorFinding
 
 runner = CliRunner()
 
@@ -64,11 +70,55 @@ def test_validate_reports_failures_as_text(project: Path) -> None:
 
     result = runner.invoke(app, ["validate"])
     assert result.exit_code == 1
-    assert "good.md: ok (glossary)" in result.output
-    assert "bad.md:1: " in result.output
-    assert "[front-matter-missing]" in result.output
-    assert "absent.md: file does not exist [file-not-found]" in result.output
-    assert "3 document(s) checked: 1 ok, 2 failed (2 issue(s))" in result.output
+    lines = result.output.splitlines()
+    assert "good.md: ok (glossary)" in lines
+    assert "bad.md:1: parse: the file does not start with a front matter block [front-matter-missing]" in lines
+    assert "    fix: make the first line '---', then 'type: <type>', then a closing '---'" in lines
+    assert "bad.md: type-specific validation skipped until the parse findings are fixed" in lines
+    assert "absent.md: parse: file does not exist [file-not-found]" in lines
+    assert "absent.md: type-specific validation skipped until the parse findings are fixed" in lines
+    assert "3 document(s) checked: 1 ok, 2 failed (2 parse finding(s), 0 validation finding(s), 2 skipped)" in lines
+
+
+def test_validate_reports_validator_findings_with_their_location(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class RejectingValidator:
+        def validate(self, doc: object) -> list[ValidatorFinding]:
+            return [
+                ValidatorFinding(
+                    code="rationale-empty",
+                    message="is empty",
+                    hint="state why this requirement exists",
+                    location=("requirement REQ-012", "rationale"),
+                    line=7,
+                )
+            ]
+
+    patched = {name: replace(doc_type, validator=RejectingValidator()) for name, doc_type in DOC_TYPES.items()}
+    monkeypatch.setattr(pipeline, "DOC_TYPES", patched)
+    runner.invoke(app, ["new", "requirements", "reqs.md"])
+    write_list(project, "reqs.md")
+
+    result = runner.invoke(app, ["validate"])
+    assert result.exit_code == 1
+    lines = result.output.splitlines()
+    assert "reqs.md:7: validate: requirement REQ-012 › rationale: is empty [rationale-empty]" in lines
+    assert "    fix: state why this requirement exists" in lines
+    assert not any("validation skipped" in line for line in lines)
+    assert "1 document(s) checked: 0 ok, 1 failed (0 parse finding(s), 1 validation finding(s), 0 skipped)" in lines
+
+    result = runner.invoke(app, ["validate", "--json"])
+    document = json.loads(result.stdout)["documents"][0]
+    assert (document["ok"], document["validated"]) == (False, True)
+    assert document["findings"] == [
+        {
+            "kind": "validate",
+            "code": "rationale-empty",
+            "message": "is empty",
+            "hint": "state why this requirement exists",
+            "line": 7,
+            "location": ["requirement REQ-012", "rationale"],
+        }
+    ]
 
 
 def test_validate_reports_failures_as_json(project: Path) -> None:
@@ -81,10 +131,25 @@ def test_validate_reports_failures_as_json(project: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is False
     assert payload["error"] is None
-    assert payload["documents"][0] == {"path": "good.md", "type": "glossary", "ok": True, "issues": []}
+    assert payload["documents"][0] == {
+        "path": "good.md",
+        "type": "glossary",
+        "ok": True,
+        "validated": True,
+        "findings": [],
+    }
     bad = payload["documents"][1]
-    assert (bad["path"], bad["type"], bad["ok"]) == ("bad.md", None, False)
-    assert [(issue["code"], issue["line"]) for issue in bad["issues"]] == [("type-unknown", None)]
+    assert (bad["path"], bad["type"], bad["ok"], bad["validated"]) == ("bad.md", None, False, False)
+    assert bad["findings"] == [
+        {
+            "kind": "parse",
+            "code": "type-unknown",
+            "message": "unknown type 'recipe'",
+            "hint": "set 'type' to one of: requirements, specs, overview, glossary (lowercase, exact)",
+            "line": None,
+            "location": None,
+        }
+    ]
 
 
 def test_validate_with_an_empty_list_passes(project: Path) -> None:
@@ -113,3 +178,14 @@ def test_validate_resolves_paths_relative_to_the_list(project: Path) -> None:
     result = runner.invoke(app, ["validate", "--config", "elsewhere/sks.toml"])
     assert result.exit_code == 0
     assert "docs/overview.md: ok (overview)" in result.output
+
+
+def test_redirected_output_is_utf8_whatever_the_system_code_page(project: Path) -> None:
+    """A path the code page cannot encode must print, not crash the tool."""
+    write_list(project, "文.md")
+    env = {**os.environ, "PYTHONIOENCODING": "cp437"}
+    completed = subprocess.run(
+        [sys.executable, "-m", "sks_tool.cli", "validate"], cwd=project, env=env, capture_output=True, check=False
+    )
+    assert completed.returncode == 1, completed.stderr.decode("utf-8", "replace")
+    assert "文.md: parse: file does not exist [file-not-found]" in completed.stdout.decode("utf-8").splitlines()

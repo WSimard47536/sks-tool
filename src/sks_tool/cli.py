@@ -1,4 +1,6 @@
+import io
 import json
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -6,11 +8,12 @@ import typer
 
 from sks_tool import __version__
 from sks_tool.doctypes import DOC_TYPES
+from sks_tool.findings import Finding, ParserFinding, ValidatorFinding
 from sks_tool.manifest import MANIFEST_NAME, ManifestError, load_manifest
-from sks_tool.parsers.common import Result, validate_file
+from sks_tool.pipeline import Result, check_file
 
 EXIT_INVALID = 1
-"""Exit code when at least one document fails validation."""
+"""Exit code when at least one document has a finding or could not be validated."""
 EXIT_USAGE = 2
 """Exit code when the tool was called wrongly or the document list is unusable."""
 
@@ -19,6 +22,18 @@ app = typer.Typer(
     help="Templates and validators for Structured Knowledge Standard (SKS) documents.",
     no_args_is_help=True,
 )
+
+
+@app.callback()
+def _use_utf8_output() -> None:
+    # Runs before every command. When the output is redirected (CI logs,
+    # "> out.json"), Python writes in the system encoding, which on Windows
+    # can be a code page such as cp437 that cannot encode every path or
+    # message, and printing would crash. UTF-8 encodes any text; the escape
+    # handler only covers undecodable filename bytes.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
 
 
 @app.command()
@@ -50,10 +65,12 @@ def validate(
         typer.Option("--json", help="Print the results as JSON instead of text."),
     ] = False,
 ) -> None:
-    """Validate every document in the list.
+    """Parse, then validate, every document in the list.
 
-    Exits with 0 if every document is valid, 1 if any document has an issue,
-    and 2 if the list itself is missing or malformed.
+    Each finding says whether it was found while parsing or while validating,
+    what is wrong and how to fix it. Exits with 0 if every document is valid,
+    1 if any document has a finding, and 2 if the list itself is missing or
+    malformed.
     """
     try:
         document_paths = load_manifest(config)
@@ -65,7 +82,7 @@ def validate(
         raise typer.Exit(EXIT_USAGE) from exc
 
     # Paths in the list are relative to the folder holding the list.
-    results = {path: validate_file(config.parent / path) for path in document_paths}
+    results = {path: check_file(config.parent / path) for path in document_paths}
     all_ok = all(result.ok for result in results.values())
 
     if json_output:
@@ -85,26 +102,66 @@ def _as_json(results: dict[str, Result]) -> dict[str, object]:
                 "path": path,
                 "type": result.doc_type,
                 "ok": result.ok,
-                "issues": [{"line": issue.line, "code": issue.code, "message": issue.message} for issue in result.issues],
+                "validated": result.validated,
+                "findings": [_finding_as_json(finding) for finding in result.findings],
             }
             for path, result in results.items()
         ],
     }
 
 
+def _finding_as_json(finding: Finding) -> dict[str, object]:
+    # Every finding has the same keys; those that do not apply to its kind are null.
+    line: int | None = None
+    location: list[str] | None = None
+    match finding:
+        case ParserFinding():
+            line = finding.line
+        case ValidatorFinding():
+            line = finding.line
+            location = list(finding.location)
+    return {
+        "kind": finding.kind,
+        "code": finding.code,
+        "message": finding.message,
+        "hint": finding.hint,
+        "line": line,
+        "location": location,
+    }
+
+
+def _finding_as_text(path: str, finding: Finding) -> str:
+    line: int | None = None
+    where = ""
+    match finding:
+        case ParserFinding():
+            line = finding.line
+        case ValidatorFinding():
+            line = finding.line
+            if finding.location:
+                where = " › ".join(finding.location) + ": "
+    position = path if line is None else f"{path}:{line}"
+    return f"{position}: {finding.kind}: {where}{finding.message} [{finding.code}]\n    fix: {finding.hint}"
+
+
 def _print_text(results: dict[str, Result]) -> None:
     for path, result in results.items():
         if result.ok:
             typer.echo(f"{path}: ok ({result.doc_type})")
-        for issue in result.issues:
-            location = path if issue.line is None else f"{path}:{issue.line}"
-            typer.echo(f"{location}: {issue.message} [{issue.code}]")
+        for finding in result.findings:
+            typer.echo(_finding_as_text(path, finding))
+        if not result.validated:
+            typer.echo(f"{path}: type-specific validation skipped until the parse findings are fixed")
 
+    all_findings = [finding for result in results.values() for finding in result.findings]
+    parse_count = sum(isinstance(finding, ParserFinding) for finding in all_findings)
+    validate_count = sum(isinstance(finding, ValidatorFinding) for finding in all_findings)
+    skipped = sum(not result.validated for result in results.values())
     failed = sum(not result.ok for result in results.values())
-    issues = sum(len(result.issues) for result in results.values())
+
     summary = f"{len(results)} document(s) checked: {len(results) - failed} ok, {failed} failed"
-    if issues:
-        summary += f" ({issues} issue(s))"
+    if failed:
+        summary += f" ({parse_count} parse finding(s), {validate_count} validation finding(s), {skipped} skipped)"
     typer.echo(f"\n{summary}")
 
 

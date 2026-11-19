@@ -1,6 +1,9 @@
-"""Document parsers.
+"""Parsers: read a ``Document`` into the structure for its type.
 
-``common`` is the main parser: it runs the checks shared by every document
-type, then hands the document to the parser for its own type (one module per
-type in this package).
+``base`` holds the ``Parser`` interface and ``CommonParser``, which reads the
+part shared by every document: its ``type``. Each document type has its own
+package with a ``parser.py`` (``parsers/<type>/parser.py``).
+
+This module is kept free of imports so importing a type's parser never pulls
+in the registry of document types, which imports every parser.
 """

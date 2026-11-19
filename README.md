@@ -136,7 +136,7 @@ The document types are:
 | `glossary` | What the project's terms mean. |
 
 Their blocks are not defined yet, so each template holds only the `type` and
-a comment stating what the document is for, and the parsers accept any body.
+a comment stating what the document is for, and every body is accepted.
 
 ### Using it from another repository
 
@@ -183,24 +183,57 @@ uv run sks-tool validate --json                    # the same results as JSON
 uv run sks-tool validate --config path/to/sks.toml
 ```
 
-Each issue is printed as `path:line: message [code]`. The exit code is `0`
-when every document is valid, `1` when any document has an issue, and `2`
-when `sks.toml` is missing or malformed.
+Each document is first **parsed** (read into its structure), then
+**validated** (checked against the rules). Every finding says which of the two
+found it, what is wrong, and how to fix it:
+
+```text
+docs/reqs.md:1: parse: the file does not start with a front matter block [front-matter-missing]
+    fix: make the first line '---', then 'type: <type>', then a closing '---'
+docs/reqs.md: type-specific validation skipped until the parse findings are fixed
+```
+
+A validation finding also names where in the document the problem is, for
+example `docs/reqs.md:7: validate: requirement REQ-012 › rationale: is empty
+[rationale-empty]`. The checks shared by every type run as soon as the file
+is read; the checks for its type run only once it is fully parsed, and a
+document that is not fully parsed is reported as skipped rather than ok. Output
+is always UTF-8, so any path or message prints, even when redirected to a file
+or a CI log. With `--json`, each document has `ok`,
+`validated` and a `findings` list; every finding has the keys `kind`
+(`parse` or `validate`), `code`, `message`, `hint`, `line` and `location`,
+set to `null` when they do not apply.
+
+The exit code is `0` when every document is valid, `1` when any document has
+a finding, and `2` when `sks.toml` is missing or malformed.
 
 ### How validation is organised
 
-- `src/sks_tool/parsers/common.py` is the main parser. It reads the file,
-  checks that it declares a known `type`, runs the checks shared by every
-  document type (`validate_common`, empty for now), then hands the document
-  to the parser for its type.
-- `src/sks_tool/parsers/<type>.py` holds the checks for one document type
-  (empty for now).
-- `src/sks_tool/templates/<type>.md` is the template `new` copies. A test
-  checks that every template passes its own parser, so the two cannot drift
-  apart.
-- `src/sks_tool/doctypes.py` registers the types and holds the one-line
-  summary of each, shown by `sks-tool types` and repeated as a comment in the
-  template.
+`src/sks_tool/pipeline.py` runs the steps for one document, in order:
 
-To add a document type, add its parser and template and register it in
-`src/sks_tool/doctypes.py`.
+1. `document.py` splits the file into front matter and body.
+2. `parsers/base.py`: `CommonParser` reads the document's `type`.
+3. `validators/base.py`: `CommonValidator` runs the checks shared by every
+   type.
+4. `parsers/<type>/parser.py` reads the body into the structure defined in
+   `docs/<type>/doc.py`.
+5. `validators/<type>/validator.py` checks that structure.
+
+Steps 1, 2 and 4 report `ParserFinding`s; steps 3 and 5 report `ValidatorFinding`s
+(`src/sks_tool/findings.py`). Parsers implement the `Parser` interface and
+validators the `Validator` interface, both in their package's `base.py`.
+`docs/`, `parsers/` and `validators/` follow the same layout: one package per
+document type, with one subpackage per block once a type's blocks are
+defined. For now no blocks are defined and no checks exist beyond the front
+matter.
+
+- `src/sks_tool/templates/<type>.md` is the template `new` copies. A test
+  checks that every template passes its own parser and validator, so they
+  cannot drift apart.
+- `src/sks_tool/doctypes.py` registers the types: each one's summary (shown
+  by `sks-tool types` and repeated as a comment in the template), parser and
+  validator. The type checker rejects a type whose parser produces a
+  structure its validator does not check.
+
+To add a document type, add its `docs/`, `parsers/` and `validators/`
+packages and its template, and register it in `src/sks_tool/doctypes.py`.
