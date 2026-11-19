@@ -38,3 +38,5 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   rationale. The template holds five example requirements.
 - `validate` checks that requirement IDs are unique across every document in
   `sks.toml`.
+- Requirement statements must be positive: "shall not" is reported as
+  `statement-negative`.

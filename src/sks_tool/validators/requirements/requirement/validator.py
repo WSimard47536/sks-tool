@@ -6,6 +6,8 @@ The statement must:
   '?' followed by a space appears before that;
 - contain the word "shall" exactly once, written in bold and lowercase
   (``**shall**``);
+- state what the system must do, not what it must not do: "shall" is not
+  followed by "not";
 - be at most 100 characters long, counted as it renders: the ``**`` around
   "shall" do not count.
 
@@ -26,6 +28,8 @@ RATIONALE_MAX_CHARACTERS = 200
 SHALL = "**shall**"
 
 _SHALL_WORD = re.compile(r"(?<![A-Za-z])shall(?![A-Za-z])", re.IGNORECASE)
+# "shall not", "**shall** not" or "**shall not**".
+_SHALL_NOT = re.compile(r"(?<![A-Za-z])shall(?:\*\*)?\s+not(?![A-Za-z])", re.IGNORECASE)
 _SENTENCE_END = re.compile(r"[.!?]\s")
 
 
@@ -97,6 +101,15 @@ class RequirementValidator:
                     f"write it as {SHALL}",
                 )
             )
+        if _SHALL_NOT.search(text):
+            findings.append(
+                finding(
+                    "statement-negative",
+                    "states what the system must not do ('shall not')",
+                    "state what the system must do instead, e.g. 'shall write each log to a new file' "
+                    "rather than 'shall not overwrite a log file'",
+                )
+            )
 
         rendered_length = len(text.replace(SHALL, "shall"))
         if rendered_length > STATEMENT_MAX_CHARACTERS:
@@ -138,4 +151,8 @@ class RequirementValidator:
 
 def _is_written_as_bold_shall(text: str, match: re.Match[str]) -> bool:
     start, end = match.span()
-    return text[max(start - 2, 0) : end + 2] == SHALL
+    if text[max(start - 2, 0) : end + 2] == SHALL:
+        return True
+    # "**shall not**" is bold too: it is reported as a negative statement
+    # instead, since writing it "**shall** not" would not fix it.
+    return re.match(r"\*\*shall\s+not\*\*", text[max(start - 2, 0) :]) is not None

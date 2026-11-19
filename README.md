@@ -73,7 +73,9 @@ The logger **shall** sample each accelerometer axis at 1 kHz.
   by a space before that, so write abbreviations such as "e.g." in full). It
   contains the word **shall** exactly once, in bold and lowercase
   (`**shall**`), and is at most 100 characters long as rendered (the `**`
-  do not count).
+  do not count). It states what the system must do, never what it must not:
+  "shall not" is rejected, so reword it positively ("shall write each log to
+  a new file" rather than "shall not overwrite a log file").
 - **Fields**: a bullet list after the statement, one field per line as
   `- <Field>: <value>`. The only field for now is `Rationale`: optional, why
   the requirement exists, at most 200 characters, and not empty when present.

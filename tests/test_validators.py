@@ -87,6 +87,10 @@ def test_valid_statements_pass(statement: str) -> None:
         ("The logger **Shall** log.", ["statement-shall-not-bold"]),
         ("The logger **shall** " + "x" * 83 + ".", ["statement-too-long"]),
         ("The marshall **shall** log.", []),  # "shall" inside another word does not count
+        ("The logger **shall** not overwrite a log file.", ["statement-negative"]),
+        ("The logger **shall not** overwrite a log file.", ["statement-negative"]),
+        ("The logger shall not overwrite a log file.", ["statement-shall-not-bold", "statement-negative"]),
+        ("The logger **shall** notify the pilot.", []),  # "not" inside another word does not count
     ],
 )
 def test_statement_rules(statement: str, expected: list[str]) -> None:
