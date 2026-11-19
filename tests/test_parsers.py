@@ -3,12 +3,15 @@ from pathlib import Path
 import pytest
 
 from sks_tool.docs.base import Metadata
+from sks_tool.docs.glossary.doc import GlossaryDoc
+from sks_tool.docs.glossary.term.block import Term
 from sks_tool.docs.requirements.doc import RequirementsDoc
 from sks_tool.docs.requirements.requirement.block import Requirement
 from sks_tool.doctypes import DOC_TYPES
 from sks_tool.document import Document, load_document
 from sks_tool.findings import ParserFinding
 from sks_tool.parsers.base import CommonParser
+from sks_tool.parsers.glossary.parser import GlossaryParser
 from sks_tool.parsers.requirements.parser import RequirementsParser
 
 FULL = {"title": "A title", "description": "A description."}
@@ -85,7 +88,7 @@ def test_common_parser_hint_lists_the_known_types() -> None:
     assert all(name in findings[0].hint for name in DOC_TYPES)
 
 
-@pytest.mark.parametrize("name", ["specs", "overview", "glossary"])
+@pytest.mark.parametrize("name", ["specs", "overview"])
 def test_type_parser_reads_any_body_while_blocks_are_undefined(name: str) -> None:
     document = make_document({"type": name, **FULL}, body="Anything\n")
     metadata = Metadata(doc_type=name, title="A title", description="A description.")
@@ -209,3 +212,59 @@ def test_a_comment_inside_a_rationale_does_not_count_toward_its_length() -> None
     doc, findings = parse_requirements("## A\n\nThe logger **shall** log.\n\n- Rationale: Why. <!-- x -->\n")
     assert findings == [("comment-not-whole-line", 10)]
     assert doc.requirements[0].rationale == "Why."
+
+
+# --- GlossaryParser -----------------------------------------------------------
+
+GLOSSARY_METADATA = Metadata(doc_type="glossary", title="A title", description="A description.")
+
+
+def parse_glossary(body: str) -> tuple[GlossaryDoc, list[tuple[str, int | None]]]:
+    """Parse ``body`` as if it started on line 6; return the structure and (code, line) of each finding."""
+    doc, findings = GlossaryParser().parse(make_document({}, body=body), GLOSSARY_METADATA)
+    assert doc is not None
+    return doc, [(finding.code, finding.line) for finding in findings]
+
+
+def test_terms_are_read_with_their_lines() -> None:
+    doc, findings = parse_glossary(
+        "<!-- guidance -->\n"  # 6
+        "\n"  # 7
+        "## Log file\n"  # 8
+        "\n"  # 9
+        "A file holding the samples of one session.\n"  # 10
+        "\n"  # 11
+        "## Sample\n"  # 12
+        "One reading of one sensor channel.\n"  # 13
+    )
+    assert findings == []
+    assert doc.metadata is GLOSSARY_METADATA
+    assert doc.terms == (
+        Term(term="Log file", definition="A file holding the samples of one session.", line=8, definition_line=10),
+        Term(term="Sample", definition="One reading of one sensor channel.", line=12, definition_line=13),
+    )
+
+
+def test_a_definition_over_several_lines_is_kept_whole_for_the_validator() -> None:
+    doc, findings = parse_glossary("## Sample\n\nOne reading\nof one channel.\n")
+    assert findings == []
+    assert doc.terms[0].definition == "One reading\nof one channel."
+
+
+@pytest.mark.parametrize(
+    ("body", "expected", "kept"),
+    [
+        ("Intro\n\n## Sample\n\nOne reading.\n", [("text-outside-term", 6)], 1),
+        ("# Glossary\n\n## Sample\n\nOne reading.\n", [("heading-wrong-level", 6)], 1),
+        ("## Sample\n\nOne reading. <!-- x -->\n", [("comment-not-whole-line", 8)], 1),
+        ("##\n\nOne reading.\n", [("term-missing", 6)], 0),
+        ("## Sample\n\n## Log file\n\nA file.\n", [("definition-missing", 6)], 1),
+        ("## Sample\n\nOne reading.\n\nMore text.\nAnd more.\n", [("glossary-text-unexpected", 10)], 1),
+        ("## Sample\n\nOne reading.\n- See also: Log file\n", [("glossary-text-unexpected", 9)], 1),
+        ("## Sample\n\n- One reading.\n", [("glossary-text-unexpected", 8), ("definition-missing", 6)], 0),
+    ],
+)
+def test_glossary_format_problems_are_parse_findings(body: str, expected: list[tuple[str, int]], kept: int) -> None:
+    doc, findings = parse_glossary(body)
+    assert findings == expected
+    assert len(doc.terms) == kept

@@ -18,9 +18,7 @@ from collections.abc import Sequence
 
 from sks_tool.docs.requirements.requirement.block import FIELDS, Requirement
 from sks_tool.findings import ParserFinding
-
-type Line = tuple[int, str]
-"""A line of the file: its 1-based number and its text."""
+from sks_tool.parsers.markdown import Line
 
 _FIELD = re.compile(r"-\s+(?P<label>[^:]*):(?P<value>.*)")
 

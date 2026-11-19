@@ -40,3 +40,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `sks.toml`.
 - Requirement statements must be positive: "shall not" is reported as
   `statement-negative`.
+- Defined `glossary` documents: a sequence of terms in alphabetical order,
+  each a term heading of at most 100 characters and a one-line definition of
+  at most 200. Terms are unique across every glossary in `sks.toml`, ignoring
+  case. The template holds four example terms.

@@ -47,10 +47,10 @@ The document types are:
 | `glossary` | What the project's terms mean. |
 
 Each template (see [Creating a document](#creating-a-document)) starts with a
-comment stating what the document is for. The body of `requirements`
-documents is defined below; the blocks of the other types are not defined
-yet, so their templates hold only the front matter and that comment, and
-every body is accepted.
+comment stating what the document is for. The bodies of `requirements` and
+`glossary` documents are defined below; the blocks of the other types are not
+defined yet, so their templates hold only the front matter and that comment,
+and every body is accepted.
 
 ### Requirements documents
 
@@ -84,6 +84,31 @@ Comments may span several lines but must take whole lines. A document must
 contain at least one requirement. The `requirements` template holds five
 example requirements for a fictional data logger; replace them with your own,
 since their IDs clash with any other document made from the template.
+
+### Glossary documents
+
+A `glossary` document is a sequence of terms and nothing else: outside them,
+only blank lines and `<!-- comments -->` are allowed, as in requirements
+documents. Each term is written as:
+
+```markdown
+## Log file
+
+A file on the logger's non-volatile memory holding the samples of one power-on session.
+```
+
+- **Term**: the level-2 heading, a word or a short expression of at most 100
+  characters. It must be unique across every glossary listed in `sks.toml`,
+  ignoring case ("Log file" and "log file" clash).
+- **Definition**: the paragraph right under the term, required: what the term
+  means in the project, on one line, at most 200 characters. Nothing else
+  follows it.
+
+The terms of a glossary must be in alphabetical order, ignoring case. The
+order compares characters as written, so a space sorts before letters ("Log
+file" before "Logger"). A document must contain at least one term. The
+`glossary` template holds four example terms for the same fictional data
+logger; replace them with your own.
 
 ## Installing
 

@@ -95,8 +95,8 @@ Steps 2 and 3 run whenever the file loaded; steps 4 and 5 need a usable
 `type`. A missing title or description is reported but does not stop steps 4
 and 5. `check_project`, also in `pipeline.py`, runs these steps for every
 document listed in `sks.toml`, then `validators/project.py`
-(`ProjectValidator`) checks the rules that span documents, such as unique
-requirement IDs.
+(`ProjectValidator`) checks the rules that span documents: unique requirement
+IDs and unique glossary terms.
 
 Steps 1, 2 and 4 report `ParserFinding`s: the format is wrong. Steps 3 and 5
 and `ProjectValidator` report `ValidatorFinding`s: the content breaks a rule
@@ -104,17 +104,29 @@ and `ProjectValidator` report `ValidatorFinding`s: the content breaks a rule
 validators the `Validator` interface, both in their package's `base.py`.
 
 `docs/`, `parsers/` and `validators/` follow the same layout: one package per
-document type, and inside it one subpackage per block. So far only
-`requirements` has a block:
+document type, and inside it one subpackage per block. So far `requirements`
+and `glossary` have blocks:
 
 ```
 docs/requirements/doc.py                          RequirementsDoc
 docs/requirements/requirement/block.py            Requirement
-parsers/requirements/parser.py                    RequirementsParser: comments, blocks, stray text
+parsers/requirements/parser.py                    RequirementsParser: splits the body into blocks
 parsers/requirements/requirement/parser.py        RequirementParser: one block
 validators/requirements/validator.py              RequirementsValidator: at least one requirement
 validators/requirements/requirement/validator.py  RequirementValidator: statement and rationale rules
+
+docs/glossary/doc.py                              GlossaryDoc
+docs/glossary/term/block.py                       Term
+parsers/glossary/parser.py                        GlossaryParser: splits the body into blocks
+parsers/glossary/term/parser.py                   TermParser: one block
+validators/glossary/validator.py                  GlossaryValidator: at least one term, alphabetical order
+validators/glossary/term/validator.py             TermValidator: term and definition lengths
 ```
+
+`parsers/markdown.py` holds the Markdown reading shared by every document
+made of `##` blocks: removing comments, splitting the body at level-2
+headings, and reporting other headings and text outside the blocks. A new
+type built from `##` blocks should use it too.
 
 - `src/sks_tool/templates/<type>.md` is the template `new` copies. A test
   checks that every template passes its own parser and validator, so they

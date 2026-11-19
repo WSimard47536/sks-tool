@@ -62,9 +62,10 @@ def test_template_starts_with_its_metadata_and_its_summary(name: str) -> None:
 @pytest.mark.parametrize(
     "text",
     [
-        f"---\r\ntype: glossary\r\n{META.replace(chr(10), chr(13) + chr(10))}---\r\n\r\nBody\r\n",  # Windows line endings
-        f"﻿---\ntype: glossary\n{META}---\n",  # byte-order mark
-        f"---\ntype: glossary\n{META}---",  # no trailing newline
+        # specs accepts any body, so only the encoding and the line endings are tested.
+        f"---\r\ntype: specs\r\n{META.replace(chr(10), chr(13) + chr(10))}---\r\n\r\nBody\r\n",  # Windows line endings
+        f"﻿---\ntype: specs\n{META}---\n",  # byte-order mark
+        f"---\ntype: specs\n{META}---",  # no trailing newline
     ],
 )
 def test_encoding_and_line_ending_variants_are_accepted(tmp_path: Path, text: str) -> None:
@@ -135,7 +136,7 @@ class _ParserRecoveringWithFinding:
 
     def parse(self, document: Document, metadata: Metadata) -> tuple[GlossaryDoc | None, list[ParserFinding]]:
         finding = ParserFinding(code="block-odd", message="a block is odd", hint="tidy the block", line=4)
-        return GlossaryDoc(metadata=metadata, document=document), [finding]
+        return GlossaryDoc(metadata=metadata, document=document, terms=()), [finding]
 
 
 class _RecordingValidator:
@@ -232,3 +233,12 @@ def test_findings_are_in_reading_order(tmp_path: Path) -> None:
         ("parse", "requirement-field-unknown"),
         ("parse", "comment-unterminated"),
     ]
+
+
+def test_project_reports_terms_defined_in_several_glossaries(tmp_path: Path) -> None:
+    template = DOC_TYPES["glossary"].template()
+    results = check_project({"a.md": write(tmp_path, template, "a.md"), "b.md": write(tmp_path, template, "b.md")})
+    for name, other in (("a.md", "b.md"), ("b.md", "a.md")):
+        findings = results[name].findings
+        assert [finding.code for finding in findings] == ["term-duplicate"] * 4
+        assert f"'Hold-up capacitor' is also defined at {other}:9" in findings[0].hint

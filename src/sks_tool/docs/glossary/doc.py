@@ -1,13 +1,14 @@
 """The structure of a ``glossary`` document.
 
-The blocks of a ``glossary`` document are not defined yet, so the structure only
-holds its metadata and the document it was read from. Add its blocks here,
-each in its own subpackage.
+A ``glossary`` document is a sequence of terms in alphabetical order, and
+nothing else; blank lines and ``<!-- comments -->`` may appear between them.
+Its title and description are in the front matter.
 """
 
 from dataclasses import dataclass
 
 from sks_tool.docs.base import Metadata
+from sks_tool.docs.glossary.term.block import Term
 from sks_tool.document import Document
 
 
@@ -18,3 +19,5 @@ class GlossaryDoc:
     metadata: Metadata
     document: Document
     """The document this structure was read from."""
+    terms: tuple[Term, ...]
+    """The terms that could be read, in file order."""

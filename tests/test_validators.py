@@ -3,11 +3,15 @@ from pathlib import Path
 import pytest
 
 from sks_tool.docs.base import Metadata
+from sks_tool.docs.glossary.doc import GlossaryDoc
+from sks_tool.docs.glossary.term.block import Term
 from sks_tool.docs.requirements.doc import RequirementsDoc
 from sks_tool.docs.requirements.requirement.block import Requirement
 from sks_tool.document import Document
 from sks_tool.findings import ValidatorFinding
 from sks_tool.validators.base import CommonValidator
+from sks_tool.validators.glossary.term.validator import TermValidator
+from sks_tool.validators.glossary.validator import GlossaryValidator
 from sks_tool.validators.project import ProjectValidator
 from sks_tool.validators.requirements.requirement.validator import RequirementValidator
 from sks_tool.validators.requirements.validator import RequirementsValidator
@@ -168,3 +172,69 @@ def test_an_id_used_across_documents_is_reported_in_each() -> None:
     assert findings["a.md"][0].hint.endswith("'A' is also used at b.md:10")
     assert findings["b.md"][0].hint.endswith("'A' is also used at a.md:6")
     assert findings["b.md"][0].location == ("requirement A",)
+
+
+# --- TermValidator and GlossaryValidator --------------------------------------
+
+
+def term(name: str, definition: str = "What it means.", line: int = 10) -> Term:
+    return Term(term=name, definition=definition, line=line, definition_line=line + 2)
+
+
+def glossary(*terms: Term) -> GlossaryDoc:
+    return GlossaryDoc(metadata=METADATA, document=DOCUMENT, terms=terms)
+
+
+@pytest.mark.parametrize(
+    ("entry", "expected"),
+    [
+        (term("x" * 100, "y" * 200), []),
+        (term("x" * 101), ["term-too-long"]),
+        (term("Sample", "y" * 201), ["definition-too-long"]),
+        (term("Sample", "One reading\nof one channel."), ["definition-not-one-line"]),
+    ],
+)
+def test_term_rules(entry: Term, expected: list[str]) -> None:
+    assert codes(TermValidator().validate(entry)) == expected
+
+
+def test_term_findings_name_the_term_and_point_at_its_lines() -> None:
+    term_finding, definition_finding = TermValidator().validate(term("x" * 101, "y" * 201))
+    assert (term_finding.location, term_finding.line) == (("term '" + "x" * 101 + "'",), 10)
+    assert (definition_finding.location, definition_finding.line) == (("term '" + "x" * 101 + "'", "definition"), 12)
+
+
+def test_a_glossary_needs_at_least_one_term() -> None:
+    assert codes(GlossaryValidator().validate(glossary())) == ["glossary-none"]
+
+
+def test_terms_in_alphabetical_order_ignoring_case_pass() -> None:
+    doc = glossary(term("hold-up capacitor"), term("Log file"), term("Logger"), term("sample"))
+    assert GlossaryValidator().validate(doc) == []
+
+
+def test_a_misplaced_term_gives_a_single_finding() -> None:
+    doc = glossary(term("Alpha", line=6), term("Zulu", line=8), term("Bravo", line=10), term("Charlie", line=12))
+    findings = GlossaryValidator().validate(doc)
+    assert [(finding.code, finding.line) for finding in findings] == [("term-out-of-order", 10)]
+    assert findings[0].message == "comes after 'Zulu'"
+    assert findings[0].hint == "sort the terms alphabetically; 'Bravo' belongs before 'Zulu'"
+
+
+def test_each_term_of_the_glossary_is_validated() -> None:
+    findings = GlossaryValidator().validate(glossary(term("A"), term("B", "y" * 201)))
+    assert [(finding.code, finding.location[0]) for finding in findings] == [("definition-too-long", "term 'B'")]
+
+
+def test_a_term_defined_in_two_glossaries_is_reported_in_each_ignoring_case() -> None:
+    structures = {"a.md": glossary(term("Log file", line=6)), "b.md": glossary(term("log FILE", line=9))}
+    findings = ProjectValidator().validate(structures)
+    assert [(finding.code, finding.line) for finding in findings["a.md"]] == [("term-duplicate", 6)]
+    assert findings["a.md"][0].hint == "define each term once; 'Log file' is also defined at b.md:9"
+    assert findings["b.md"][0].hint == "define each term once; 'log FILE' is also defined at a.md:6"
+    assert findings["b.md"][0].location == ("term 'log FILE'",)
+
+
+def test_terms_and_requirement_ids_do_not_clash() -> None:
+    structures = {"g.md": glossary(term("LOG-001")), "r.md": requirements_doc(("LOG-001", 6))}
+    assert ProjectValidator().validate(structures) == {}
