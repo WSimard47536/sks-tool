@@ -28,3 +28,5 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `findings`, and documents have a `validated` key.
 - `sks-tool` always writes UTF-8, so a path or message the system code page
   cannot encode no longer crashes it when its output is redirected.
+- Split the README into a user guide (`README.md`) and a guide for developing
+  `sks-tool` (`CONTRIBUTING.md`).
