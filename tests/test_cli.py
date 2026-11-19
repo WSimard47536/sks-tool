@@ -41,7 +41,7 @@ def test_new_creates_a_document_that_validates(project: Path, name: str) -> None
     created = project / "docs" / "sub" / "doc.md"
     # Byte-for-byte the template, with "\n" line endings on every platform.
     assert created.read_bytes() == DOC_TYPES[name].template().encode()
-    assert created.read_bytes().startswith(f"---\ntype: {name}\n---\n".encode())
+    assert created.read_bytes().startswith(f"---\ntype: {name}\n".encode())
     assert b"\r" not in created.read_bytes()
 
     write_list(project, "docs/sub/doc.md")
@@ -123,7 +123,7 @@ def test_validate_reports_validator_findings_with_their_location(project: Path, 
 
 def test_validate_reports_failures_as_json(project: Path) -> None:
     runner.invoke(app, ["new", "glossary", "good.md"])
-    (project / "bad.md").write_bytes(b"---\ntype: recipe\n---\n")
+    (project / "bad.md").write_bytes(b"---\ntype: recipe\ntitle: Bad\ndescription: A bad document.\n---\n")
     write_list(project, "good.md", "bad.md")
 
     result = runner.invoke(app, ["validate", "--json"])
@@ -189,3 +189,26 @@ def test_redirected_output_is_utf8_whatever_the_system_code_page(project: Path) 
     )
     assert completed.returncode == 1, completed.stderr.decode("utf-8", "replace")
     assert "文.md: parse: file does not exist [file-not-found]" in completed.stdout.decode("utf-8").splitlines()
+
+
+def test_validate_reports_ids_used_in_two_documents(project: Path) -> None:
+    """Two documents created from the template keep its example IDs until edited: both are flagged."""
+    runner.invoke(app, ["new", "requirements", "a.md"])
+    runner.invoke(app, ["new", "requirements", "b.md"])
+    write_list(project, "a.md", "b.md")
+
+    result = runner.invoke(app, ["validate"])
+    assert result.exit_code == 1
+    lines = result.output.splitlines()
+    assert "a.md:10: validate: requirement LOG-001: the ID is used by 2 requirements [requirement-id-duplicate]" in lines
+    assert "    fix: give each requirement its own ID; 'LOG-001' is also used at b.md:10" in lines
+    assert "    fix: give each requirement its own ID; 'LOG-001' is also used at a.md:10" in lines
+    assert "2 document(s) checked: 0 ok, 2 failed (0 parse finding(s), 10 validation finding(s), 0 skipped)" in lines
+
+    result = runner.invoke(app, ["validate", "--json"])
+    documents = json.loads(result.stdout)["documents"]
+    assert [(document["ok"], document["validated"], len(document["findings"])) for document in documents] == [
+        (False, True, 5),
+        (False, True, 5),
+    ]
+    assert documents[1]["findings"][0]["location"] == ["requirement LOG-001"]

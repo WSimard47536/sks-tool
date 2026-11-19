@@ -10,7 +10,7 @@ from sks_tool import __version__
 from sks_tool.doctypes import DOC_TYPES
 from sks_tool.findings import Finding, ParserFinding, ValidatorFinding
 from sks_tool.manifest import MANIFEST_NAME, ManifestError, load_manifest
-from sks_tool.pipeline import Result, check_file
+from sks_tool.pipeline import Result, check_project
 
 EXIT_INVALID = 1
 """Exit code when at least one document has a finding or could not be validated."""
@@ -82,7 +82,7 @@ def validate(
         raise typer.Exit(EXIT_USAGE) from exc
 
     # Paths in the list are relative to the folder holding the list.
-    results = {path: check_file(config.parent / path) for path in document_paths}
+    results = check_project({path: config.parent / path for path in document_paths})
     all_ok = all(result.ok for result in results.values())
 
     if json_output:

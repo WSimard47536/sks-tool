@@ -30,3 +30,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   cannot encode no longer crashes it when its output is redirected.
 - Split the README into a user guide (`README.md`) and a guide for developing
   `sks-tool` (`CONTRIBUTING.md`).
+- Every document's front matter now needs a `title` (at most 5 words) and a
+  `description` (at most 100 words) besides its `type`; every template has
+  them.
+- Defined `requirements` documents: a sequence of requirements, each an ID
+  heading, a one-sentence statement with a bold **shall**, and an optional
+  rationale. The template holds five example requirements.
+- `validate` checks that requirement IDs are unique across every document in
+  `sks.toml`.

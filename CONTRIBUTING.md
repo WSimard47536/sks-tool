@@ -83,20 +83,38 @@ version) — run `uv sync` and stage the updated `uv.lock` alongside
 `src/sks_tool/pipeline.py` runs the steps for one document, in order:
 
 1. `document.py` splits the file into front matter and body.
-2. `parsers/base.py`: `CommonParser` reads the document's `type`.
-3. `validators/base.py`: `CommonValidator` runs the checks shared by every
-   type.
+2. `parsers/base.py`: `CommonParser` reads the front matter keys every
+   document has (`type`, `title`, `description`) into the `Metadata` of
+   `docs/base.py`.
+3. `validators/base.py`: `CommonValidator` checks that metadata.
 4. `parsers/<type>/parser.py` reads the body into the structure defined in
    `docs/<type>/doc.py`.
 5. `validators/<type>/validator.py` checks that structure.
 
-Steps 1, 2 and 4 report `ParserFinding`s; steps 3 and 5 report `ValidatorFinding`s
+Steps 2 and 3 run whenever the file loaded; steps 4 and 5 need a usable
+`type`. A missing title or description is reported but does not stop steps 4
+and 5. `check_project`, also in `pipeline.py`, runs these steps for every
+document listed in `sks.toml`, then `validators/project.py`
+(`ProjectValidator`) checks the rules that span documents, such as unique
+requirement IDs.
+
+Steps 1, 2 and 4 report `ParserFinding`s: the format is wrong. Steps 3 and 5
+and `ProjectValidator` report `ValidatorFinding`s: the content breaks a rule
 (`src/sks_tool/findings.py`). Parsers implement the `Parser` interface and
 validators the `Validator` interface, both in their package's `base.py`.
+
 `docs/`, `parsers/` and `validators/` follow the same layout: one package per
-document type, with one subpackage per block once a type's blocks are
-defined. For now no blocks are defined and no checks exist beyond the front
-matter.
+document type, and inside it one subpackage per block. So far only
+`requirements` has a block:
+
+```
+docs/requirements/doc.py                          RequirementsDoc
+docs/requirements/requirement/block.py            Requirement
+parsers/requirements/parser.py                    RequirementsParser: comments, blocks, stray text
+parsers/requirements/requirement/parser.py        RequirementParser: one block
+validators/requirements/validator.py              RequirementsValidator: at least one requirement
+validators/requirements/requirement/validator.py  RequirementValidator: statement and rationale rules
+```
 
 - `src/sks_tool/templates/<type>.md` is the template `new` copies. A test
   checks that every template passes its own parser and validator, so they

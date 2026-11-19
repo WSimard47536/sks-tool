@@ -15,15 +15,27 @@ This guide is for using `sks-tool`. To work on `sks-tool` itself, see
 ## SKS documents
 
 SKS is the Structured Knowledge Standard. An SKS document is a Markdown file
-that starts with a YAML front matter block declaring its type:
+that starts with a YAML front matter block declaring its type, title and
+description:
 
 ```markdown
 ---
 type: requirements
+title: Data logger requirements
+description: What the data logger must do to record flight data.
 ---
 
 (Markdown body)
 ```
+
+Every document needs all three keys:
+
+- `type`: one of the types below, in lowercase.
+- `title`: at most 5 words.
+- `description`: what the document contains, in at most 100 words.
+
+Words are counted as runs of characters separated by spaces. Other front
+matter keys are ignored.
 
 The document types are:
 
@@ -34,8 +46,42 @@ The document types are:
 | `overview` | What the project is, what it does and why, with a system diagram. |
 | `glossary` | What the project's terms mean. |
 
-Their blocks are not defined yet, so each template holds only the `type` and
-a comment stating what the document is for, and every body is accepted.
+Each template (see [Creating a document](#creating-a-document)) starts with a
+comment stating what the document is for. The body of `requirements`
+documents is defined below; the blocks of the other types are not defined
+yet, so their templates hold only the front matter and that comment, and
+every body is accepted.
+
+### Requirements documents
+
+A `requirements` document is a sequence of requirements and nothing else:
+outside them, only blank lines and `<!-- comments -->` are allowed. Each
+requirement is written as:
+
+```markdown
+## LOG-001
+
+The logger **shall** sample each accelerometer axis at 1 kHz.
+
+- Rationale: Vibration analysis needs content up to 400 Hz, which requires sampling above 800 Hz.
+```
+
+- **ID**: the level-2 heading. It must be unique across every document listed
+  in `sks.toml`; there are no other naming rules yet.
+- **Statement**: the paragraph right under the heading, required. It must be a
+  single sentence on one line, ending with `.` (no `.`, `!` or `?` followed
+  by a space before that, so write abbreviations such as "e.g." in full). It
+  contains the word **shall** exactly once, in bold and lowercase
+  (`**shall**`), and is at most 100 characters long as rendered (the `**`
+  do not count).
+- **Fields**: a bullet list after the statement, one field per line as
+  `- <Field>: <value>`. The only field for now is `Rationale`: optional, why
+  the requirement exists, at most 200 characters, and not empty when present.
+
+Comments may span several lines but must take whole lines. A document must
+contain at least one requirement. The `requirements` template holds five
+example requirements for a fictional data logger; replace them with your own,
+since their IDs clash with any other document made from the template.
 
 ## Installing
 

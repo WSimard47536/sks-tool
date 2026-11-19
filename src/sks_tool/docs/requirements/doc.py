@@ -1,12 +1,14 @@
 """The structure of a ``requirements`` document.
 
-The blocks of a ``requirements`` document are not defined yet, so the structure only
-holds the document it was read from. Add its blocks here, each in its own
-subpackage.
+A ``requirements`` document is a sequence of requirements and nothing else;
+blank lines and ``<!-- comments -->`` may appear between them. Its title and
+description are in the front matter.
 """
 
 from dataclasses import dataclass
 
+from sks_tool.docs.base import Metadata
+from sks_tool.docs.requirements.requirement.block import Requirement
 from sks_tool.document import Document
 
 
@@ -14,5 +16,8 @@ from sks_tool.document import Document
 class RequirementsDoc:
     """A ``requirements`` document read into its structure."""
 
+    metadata: Metadata
     document: Document
     """The document this structure was read from."""
+    requirements: tuple[Requirement, ...]
+    """The requirements that could be read, in file order."""

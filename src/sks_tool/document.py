@@ -4,6 +4,8 @@ An SKS document is a Markdown file that starts with a YAML front matter block::
 
     ---
     type: requirements
+    title: Data logger requirements
+    description: What the data logger must do to record flight data.
     ---
 
     (Markdown body)
@@ -98,7 +100,7 @@ def load_document(path: Path) -> tuple[Document | None, list[ParserFinding]]:
             ParserFinding(
                 code="front-matter-invalid-yaml",
                 message=f"front matter is not valid YAML: {problem}",
-                hint="fix the YAML syntax on this line",
+                hint="fix the YAML syntax on this line; if a value contains ': ', put the value in quotes",
                 line=line,
             )
         ]
