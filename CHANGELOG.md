@@ -44,3 +44,6 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   each a term heading of at most 100 characters and a one-line definition of
   at most 200. Terms are unique across every glossary in `sks.toml`, ignoring
   case. The template holds four example terms.
+- Every requirement now states its type on the first line under its ID:
+  `Type: Business`, `Type: Functional` or `Type: Non-functional`, followed
+  by a blank line. The template shows each type.

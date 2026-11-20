@@ -108,6 +108,10 @@ def parse_requirements(body: str) -> tuple[RequirementsDoc, list[tuple[str, int 
     return doc, [(finding.code, finding.line) for finding in findings]
 
 
+HEAD = "## A\n\nType: Functional\n\n"
+"""A requirement's heading (line 6) and type line (line 8); its statement then starts on line 10."""
+
+
 def test_requirements_are_read_with_their_lines() -> None:
     doc, findings = parse_requirements(
         "<!-- guidance\n"  # 6
@@ -115,43 +119,87 @@ def test_requirements_are_read_with_their_lines() -> None:
         "\n"  # 8
         "## LOG-001\n"  # 9
         "\n"  # 10
-        "The logger **shall** log.\n"  # 11
+        "Type: Business\n"  # 11
         "\n"  # 12
-        "- Rationale: Because.\n"  # 13
+        "The logger **shall** log.\n"  # 13
         "\n"  # 14
-        "## LOG-002 ##\n"  # 15
-        "The logger **shall** beep.\n"  # 16
+        "- Rationale: Because.\n"  # 15
+        "\n"  # 16
+        "## LOG-002 ##\n"  # 17
+        "Type: Non-functional\n"  # 18: the type line may follow the heading directly
+        "\n"  # 19
+        "The logger **shall** beep.\n"  # 20
     )
     assert findings == []
     assert doc.metadata is METADATA
     assert doc.requirements == (
         Requirement(
             id="LOG-001",
+            type="Business",
             statement="The logger **shall** log.",
             rationale="Because.",
             line=9,
-            statement_line=11,
-            rationale_line=13,
+            type_line=11,
+            statement_line=13,
+            rationale_line=15,
         ),
         Requirement(
             id="LOG-002",
+            type="Non-functional",
             statement="The logger **shall** beep.",
             rationale=None,
-            line=15,
-            statement_line=16,
+            line=17,
+            type_line=18,
+            statement_line=20,
             rationale_line=None,
         ),
     )
 
 
+@pytest.mark.parametrize(
+    ("body", "expected_type"),
+    [
+        ("## A\n\nType: Functionnal\n\nThe logger **shall** log.\n", "Functionnal"),  # kept for the validator
+        ("## A\n\nType:\n\nThe logger **shall** log.\n", ""),
+    ],
+)
+def test_the_type_is_kept_as_written_for_the_validator(body: str, expected_type: str) -> None:
+    doc, findings = parse_requirements(body)
+    assert findings == []
+    assert doc.requirements[0].type == expected_type
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "## A\n\nThe logger **shall** log.\n",  # no type line at all
+        "## A\n\ntype: Functional\n\nThe logger **shall** log.\n",  # the label is exact: not a type line
+        "## A\n\nThe logger **shall** log.\n\nType: Functional\n",  # the type line comes first
+    ],
+)
+def test_a_requirement_without_a_type_line_first_is_reported_and_kept(body: str) -> None:
+    doc, findings = parse_requirements(body)
+    assert findings[0] == ("requirement-type-missing", 8)
+    assert len(doc.requirements) == 1
+    assert doc.requirements[0].type is None
+
+
+def test_a_statement_right_after_the_type_line_is_reported_and_kept() -> None:
+    """Without a blank line, Markdown would render the type and the statement as one paragraph."""
+    doc, findings = parse_requirements("## A\n\nType: Functional\nThe logger **shall** log.\n")
+    assert findings == [("requirement-type-not-separated", 9)]
+    assert doc.requirements[0].type == "Functional"
+    assert doc.requirements[0].statement == "The logger **shall** log."
+
+
 def test_a_statement_over_several_lines_is_kept_whole_for_the_validator() -> None:
-    doc, findings = parse_requirements("## A\n\nFirst line\nsecond line.\n")
+    doc, findings = parse_requirements(f"{HEAD}First line\nsecond line.\n")
     assert findings == []
     assert doc.requirements[0].statement == "First line\nsecond line."
 
 
 def test_an_empty_rationale_is_kept_for_the_validator() -> None:
-    doc, findings = parse_requirements("## A\n\nThe logger **shall** log.\n\n- Rationale:\n")
+    doc, findings = parse_requirements(f"{HEAD}The logger **shall** log.\n\n- Rationale:\n")
     assert findings == []
     assert doc.requirements[0].rationale == ""
 
@@ -160,33 +208,33 @@ def test_an_empty_rationale_is_kept_for_the_validator() -> None:
     ("body", "expected", "kept"),
     [
         # Outside requirements: only blank lines and comments.
-        ("Intro\nstill intro\n\n## A\n\nThe logger **shall** log.\n", [("text-outside-requirement", 6)], 1),
-        ("# Title\n\n## A\n\nThe logger **shall** log.\n", [("heading-wrong-level", 6)], 1),
-        ("## A\n\nThe logger **shall** log.\n\n### Detail\n", [("heading-wrong-level", 10)], 1),
-        ("## A\n\nThe logger **shall** log.\n<!-- never closed\n", [("comment-unterminated", 9)], 1),
+        (f"Intro\nstill intro\n\n{HEAD}The logger **shall** log.\n", [("text-outside-requirement", 6)], 1),
+        (f"# Title\n\n{HEAD}The logger **shall** log.\n", [("heading-wrong-level", 6)], 1),
+        (f"{HEAD}The logger **shall** log.\n\n### Detail\n", [("heading-wrong-level", 12)], 1),
+        (f"{HEAD}The logger **shall** log.\n<!-- never closed\n", [("comment-unterminated", 11)], 1),
+        (f"{HEAD}The logger **shall** log. <!-- note -->\n", [("comment-not-whole-line", 10)], 1),
         (
-            "## A\n\nThe logger **shall** log. <!-- note -->\n",
-            [("comment-not-whole-line", 8)],
-            1,
-        ),
-        (
-            "<!-- note --> trailing\n## A\n\nThe logger **shall** log.\n",
+            f"<!-- note --> trailing\n{HEAD}The logger **shall** log.\n",
             [("comment-not-whole-line", 6), ("text-outside-requirement", 6)],
             1,
         ),
         # Within a requirement.
-        ("##\n\nThe logger **shall** log.\n", [("requirement-id-missing", 6)], 0),
-        ("## A\n\n- Rationale: Why.\n", [("requirement-statement-missing", 6)], 0),
-        ("## A\n\nThe logger **shall** log.\n\nMore text.\nAnd more.\n", [("requirement-text-unexpected", 10)], 1),
-        ("## A\n\nThe logger **shall** log.\n\n- Notes: x\n", [("requirement-field-unknown", 10)], 1),
-        ("## A\n\nThe logger **shall** log.\n\n- rationale: x\n", [("requirement-field-unknown", 10)], 1),
-        ("## A\n\nThe logger **shall** log.\n\n- just a bullet\n", [("requirement-field-malformed", 10)], 1),
+        ("##\n\nType: Functional\n\nThe logger **shall** log.\n", [("requirement-id-missing", 6)], 0),
+        (f"{HEAD}- Rationale: Why.\n", [("requirement-statement-missing", 6)], 0),
+        (f"{HEAD}The logger **shall** log.\n\nMore text.\nAnd more.\n", [("requirement-text-unexpected", 12)], 1),
+        (f"{HEAD}The logger **shall** log.\n\n- Notes: x\n", [("requirement-field-unknown", 12)], 1),
+        (f"{HEAD}The logger **shall** log.\n\n- rationale: x\n", [("requirement-field-unknown", 12)], 1),
+        (f"{HEAD}The logger **shall** log.\n\n- just a bullet\n", [("requirement-field-malformed", 12)], 1),
         (
-            "## A\n\nThe logger **shall** log.\n\n- Rationale: x\n- Rationale: y\n",
-            [("requirement-field-repeated", 11)],
+            f"{HEAD}The logger **shall** log.\n\n- Rationale: x\n- Rationale: y\n",
+            [("requirement-field-repeated", 13)],
             1,
         ),
-        ("## A\n\nThe logger **shall** log.\n\n- Rationale: x\n  continued\n", [("requirement-field-continued", 11)], 1),
+        (
+            f"{HEAD}The logger **shall** log.\n\n- Rationale: x\n  continued\n",
+            [("requirement-field-continued", 13)],
+            1,
+        ),
     ],
 )
 def test_requirements_format_problems_are_parse_findings(body: str, expected: list[tuple[str, int]], kept: int) -> None:
@@ -196,21 +244,21 @@ def test_requirements_format_problems_are_parse_findings(body: str, expected: li
 
 
 def test_the_first_of_repeated_fields_is_used() -> None:
-    doc, _ = parse_requirements("## A\n\nThe logger **shall** log.\n\n- Rationale: x\n- Rationale: y\n")
+    doc, _ = parse_requirements(f"{HEAD}The logger **shall** log.\n\n- Rationale: x\n- Rationale: y\n")
     assert doc.requirements[0].rationale == "x"
 
 
 def test_a_comment_after_an_id_is_reported_and_kept_out_of_the_id() -> None:
     """Otherwise '## A <!-- draft -->' would not clash with another '## A'."""
-    doc, findings = parse_requirements("## A <!-- draft -->\n\nThe logger **shall** log. <!-- x -->\n")
-    assert findings == [("comment-not-whole-line", 6), ("comment-not-whole-line", 8)]
+    doc, findings = parse_requirements("## A <!-- draft -->\n\nType: Functional\n\nThe logger **shall** log. <!-- x -->\n")
+    assert findings == [("comment-not-whole-line", 6), ("comment-not-whole-line", 10)]
     assert doc.requirements[0].id == "A"
     assert doc.requirements[0].statement == "The logger **shall** log."
 
 
 def test_a_comment_inside_a_rationale_does_not_count_toward_its_length() -> None:
-    doc, findings = parse_requirements("## A\n\nThe logger **shall** log.\n\n- Rationale: Why. <!-- x -->\n")
-    assert findings == [("comment-not-whole-line", 10)]
+    doc, findings = parse_requirements(f"{HEAD}The logger **shall** log.\n\n- Rationale: Why. <!-- x -->\n")
+    assert findings == [("comment-not-whole-line", 12)]
     assert doc.requirements[0].rationale == "Why."
 
 

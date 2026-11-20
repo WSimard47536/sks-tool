@@ -20,12 +20,20 @@ METADATA = Metadata(doc_type="requirements", title="A title", description="A des
 DOCUMENT = Document(path=Path("doc.md"), front_matter={}, body="", body_line=6)
 
 
-def requirement(statement: str, rationale: str | None = None, id: str = "LOG-001", line: int = 10) -> Requirement:
+def requirement(
+    statement: str,
+    rationale: str | None = None,
+    id: str = "LOG-001",
+    line: int = 10,
+    type: str | None = "Functional",
+) -> Requirement:
     return Requirement(
         id=id,
+        type=type,
         statement=statement,
         rationale=rationale,
         line=line,
+        type_line=None if type is None else line + 1,
         statement_line=line + 2,
         rationale_line=None if rationale is None else line + 4,
     )
@@ -119,6 +127,33 @@ def test_rationale_rules(rationale: str | None, expected: list[str]) -> None:
     assert codes(findings) == expected
     assert all(finding.location == ("requirement LOG-001", "rationale") for finding in findings)
     assert all(finding.line == 14 for finding in findings)
+
+
+@pytest.mark.parametrize("valid", ["Business", "Functional", "Non-functional"])
+def test_each_requirement_type_passes(valid: str) -> None:
+    assert RequirementValidator().validate(requirement("The logger **shall** log.", type=valid)) == []
+
+
+def test_a_missing_type_is_not_reported_again() -> None:
+    """The parser already reported the missing type line."""
+    assert RequirementValidator().validate(requirement("The logger **shall** log.", type=None)) == []
+
+
+@pytest.mark.parametrize(
+    ("written", "message"),
+    [
+        ("Functionnal", "'Functionnal' is not a requirement type"),
+        ("functional", "'functional' is not a requirement type"),  # matched exactly
+        ("Non functional", "'Non functional' is not a requirement type"),
+        ("", "is empty"),
+    ],
+)
+def test_an_unknown_type_is_a_validation_finding(written: str, message: str) -> None:
+    findings = RequirementValidator().validate(requirement("The logger **shall** log.", type=written))
+    assert [(finding.code, finding.message) for finding in findings] == [("requirement-type-unknown", message)]
+    assert findings[0].location == ("requirement LOG-001", "type")
+    assert findings[0].line == 11
+    assert "Business, Functional, Non-functional" in findings[0].hint
 
 
 # --- RequirementsValidator ----------------------------------------------------

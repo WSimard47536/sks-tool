@@ -4,23 +4,27 @@
 level-2 heading, and hands each one to ``RequirementParser``. A block holds,
 in order:
 
-1. the statement: the first paragraph after the heading;
-2. optional fields, one bullet per line: ``- Rationale: <text>``.
+1. the type line, the first text after the heading: ``Type: <type>``,
+   followed by a blank line;
+2. the statement: the next paragraph;
+3. optional fields, one bullet per line: ``- Rationale: <text>``.
 
 Blank lines separate paragraphs; comments have already been replaced by blank
-lines. Problems this parser can work around (an unknown field, stray text) are
-reported and the requirement is kept; a block without an ID or a statement
-cannot be read and is dropped.
+lines. Problems this parser can work around (a missing type line, an unknown
+field, stray text) are reported and the requirement is kept; a block without
+an ID or a statement cannot be read and is dropped. The type's value is kept
+as written: whether it is a known type is checked by the validator.
 """
 
 import re
 from collections.abc import Sequence
 
-from sks_tool.docs.requirements.requirement.block import FIELDS, Requirement
+from sks_tool.docs.requirements.requirement.block import FIELDS, TYPE_LABEL, Requirement, RequirementType
 from sks_tool.findings import ParserFinding
 from sks_tool.parsers.markdown import Line
 
 _FIELD = re.compile(r"-\s+(?P<label>[^:]*):(?P<value>.*)")
+_TYPE_LINE = re.compile(rf"{TYPE_LABEL}:(?P<value>.*)")
 
 
 class RequirementParser:
@@ -45,17 +49,49 @@ class RequirementParser:
 
         findings: list[ParserFinding] = []
         name = f"requirement {requirement_id}"
+        type_line: Line | None = None
         statement: list[Line] = []
         fields: dict[str, Line] = {}
         # "before" the statement, "in" it, or "after" it (in the fields).
         state = "before"
         previous_kind = "blank"
+        seen_text = False
         for number, text in lines:
+            if not seen_text and text.strip():
+                # The first text under the heading is the type line.
+                seen_text = True
+                type_match = _TYPE_LINE.fullmatch(text.strip())
+                if type_match is not None:
+                    type_line = (number, type_match["value"].strip())
+                    previous_kind = "type"
+                    continue
+                findings.append(
+                    ParserFinding(
+                        code="requirement-type-missing",
+                        message=f"{name} does not start with its type",
+                        hint=f"write '{TYPE_LABEL}: <type>' as the first line under the heading, with one of: "
+                        f"{', '.join(RequirementType)}",
+                        line=number,
+                    )
+                )
+
             if not text.strip():
                 if state == "in":
                     state = "after"
                 previous_kind = "blank"
                 continue
+
+            if previous_kind == "type":
+                # Without a blank line, Markdown renders the type line and what
+                # follows as one paragraph. What follows is still read.
+                findings.append(
+                    ParserFinding(
+                        code="requirement-type-not-separated",
+                        message=f"no blank line after the type line of {name}",
+                        hint="leave a blank line after the type line, so it renders apart from the statement",
+                        line=number,
+                    )
+                )
 
             if text[0] in " \t" and previous_kind in ("field", "continuation"):
                 findings.append(
@@ -86,7 +122,8 @@ class RequirementParser:
                     ParserFinding(
                         code="requirement-text-unexpected",
                         message=f"unexpected text in {name}",
-                        hint="a requirement has one statement paragraph, then its fields as '- Rationale: ...'; "
+                        hint="a requirement has its type line, one statement paragraph, then its fields as "
+                        "'- Rationale: ...'; "
                         "remove this text or put it in a <!-- comment -->",
                         line=number,
                     )
@@ -98,7 +135,7 @@ class RequirementParser:
                 ParserFinding(
                     code="requirement-statement-missing",
                     message=f"{name} has no statement",
-                    hint="write the statement as the paragraph right under the heading, before any field",
+                    hint="write the statement as the paragraph under the type line, before any field",
                     line=heading_line,
                 )
             )
@@ -107,9 +144,11 @@ class RequirementParser:
         rationale = fields.get("Rationale")
         requirement = Requirement(
             id=requirement_id,
+            type=None if type_line is None else type_line[1],
             statement="\n".join(text for _, text in statement),
             rationale=None if rationale is None else rationale[1],
             line=heading_line,
+            type_line=None if type_line is None else type_line[0],
             statement_line=statement[0][0],
             rationale_line=None if rationale is None else rationale[0],
         )

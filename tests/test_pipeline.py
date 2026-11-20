@@ -218,8 +218,8 @@ def test_findings_are_in_reading_order(tmp_path: Path) -> None:
     """Findings read top to bottom like the file, whichever step found them."""
     text = (
         "---\ntype: requirements\ntitle: A title\n---\n"  # lines 1-4; no description
-        "\n"  # 5
-        "## A\n"  # 6
+        "## A\n"  # 5
+        "Type: Functional\n"  # 6
         "\n"  # 7
         "The logger logs.\n"  # 8: a validation finding
         "\n"  # 9

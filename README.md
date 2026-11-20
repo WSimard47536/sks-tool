@@ -59,7 +59,9 @@ outside them, only blank lines and `<!-- comments -->` are allowed. Each
 requirement is written as:
 
 ```markdown
-## LOG-001
+## LOG-002
+
+Type: Non-functional
 
 The logger **shall** sample each accelerometer axis at 1 kHz.
 
@@ -68,7 +70,13 @@ The logger **shall** sample each accelerometer axis at 1 kHz.
 
 - **ID**: the level-2 heading. It must be unique across every document listed
   in `sks.toml`; there are no other naming rules yet.
-- **Statement**: the paragraph right under the heading, required. It must be a
+- **Type**: the first line under the heading, required, written exactly as
+  `Type: <type>` and followed by a blank line, with one of:
+  - `Business`: what the system must do to fulfil its purpose;
+  - `Functional`: what it must do to fulfil the business requirements;
+  - `Non-functional`: how it must do it, such as safety standards or
+    performance.
+- **Statement**: the paragraph under the type line, required. It must be a
   single sentence on one line, ending with `.` (no `.`, `!` or `?` followed
   by a space before that, so write abbreviations such as "e.g." in full). It
   contains the word **shall** exactly once, in bold and lowercase

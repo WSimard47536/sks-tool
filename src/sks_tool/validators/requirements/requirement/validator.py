@@ -1,5 +1,8 @@
 """The validator for one requirement.
 
+The type must be one of the ``RequirementType`` values, written exactly:
+``Business``, ``Functional`` or ``Non-functional``.
+
 The statement must:
 
 - fit on one line and be one sentence: it ends with '.', and no '.', '!' or
@@ -20,7 +23,7 @@ The ID's only rule for now is uniqueness, checked across documents by
 
 import re
 
-from sks_tool.docs.requirements.requirement.block import Requirement
+from sks_tool.docs.requirements.requirement.block import TYPE_LABEL, Requirement, RequirementType
 from sks_tool.findings import ValidatorFinding
 
 STATEMENT_MAX_CHARACTERS = 100
@@ -38,7 +41,21 @@ class RequirementValidator:
 
     def validate(self, requirement: Requirement) -> list[ValidatorFinding]:
         """Return the rules the requirement breaks."""
-        return self._check_statement(requirement) + self._check_rationale(requirement)
+        return self._check_type(requirement) + self._check_statement(requirement) + self._check_rationale(requirement)
+
+    def _check_type(self, requirement: Requirement) -> list[ValidatorFinding]:
+        # A missing type line (None) has already been reported by the parser.
+        if requirement.type is None or requirement.type in set(RequirementType):
+            return []
+        return [
+            ValidatorFinding(
+                code="requirement-type-unknown",
+                message=f"'{requirement.type}' is not a requirement type" if requirement.type else "is empty",
+                hint=f"write '{TYPE_LABEL}: <type>' with one of: {', '.join(RequirementType)} (capitalised, exact)",
+                location=(f"requirement {requirement.id}", "type"),
+                line=requirement.type_line,
+            )
+        ]
 
     def _check_statement(self, requirement: Requirement) -> list[ValidatorFinding]:
         findings: list[ValidatorFinding] = []
