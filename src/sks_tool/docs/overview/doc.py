@@ -15,14 +15,13 @@ nothing else; blank lines and ``<!-- comments -->`` may appear between them::
 
     ![System diagram](system_diagram.drawio.svg)
 
-The diagram is a ``.drawio.svg`` file: an SVG image that also carries the
-editable draw.io diagram, so the same file is edited in draw.io (for example
-with the Draw.io Integration extension for VS Code) and rendered on the page.
+The diagram is a ``.drawio.svg`` file (see ``sks_tool.docs.diagram``).
 """
 
 from dataclasses import dataclass
 
 from sks_tool.docs.base import Metadata
+from sks_tool.docs.diagram import Diagram
 from sks_tool.document import Document
 
 SUMMARY = "Summary"
@@ -40,17 +39,6 @@ class TextSection:
     """The paragraph as written; lines are joined with ``\\n`` if it spans several."""
     line: int
     """1-based line where the paragraph starts."""
-
-
-@dataclass(frozen=True)
-class Diagram:
-    """A diagram shown as a Markdown image: ``![<alt>](<path>)``."""
-
-    alt: str
-    path: str
-    """The image path as written, relative to the document's folder."""
-    line: int
-    """1-based line of the image."""
 
 
 @dataclass(frozen=True)

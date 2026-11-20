@@ -3,7 +3,8 @@
 Some rules cannot be checked one document at a time, because they concern
 every document checked together (the documents listed in ``sks.toml``):
 
-- requirement IDs must be unique;
+- requirement and spec IDs must be unique, together: a spec cannot reuse a
+  requirement's ID;
 - glossary terms must be unique, ignoring case.
 
 ``ProjectValidator`` runs after every document has been parsed and validated
@@ -16,6 +17,7 @@ from dataclasses import dataclass
 
 from sks_tool.docs.glossary.doc import GlossaryDoc
 from sks_tool.docs.requirements.doc import RequirementsDoc
+from sks_tool.docs.specs.doc import SpecsDoc
 from sks_tool.findings import ValidatorFinding
 from sks_tool.validators.glossary.term.validator import term_location
 
@@ -41,26 +43,27 @@ class ProjectValidator:
         ``structures`` maps each document's name, as shown in the output, to
         its parsed structure. Documents without findings are left out.
         """
-        requirement_ids: dict[str, list[_Use]] = defaultdict(list)
+        ids: dict[str, list[_Use]] = defaultdict(list)
         terms: dict[str, list[_Use]] = defaultdict(list)
         for name, structure in structures.items():
             if isinstance(structure, RequirementsDoc):
                 for requirement in structure.requirements:
-                    requirement_ids[requirement.id].append(
-                        _Use(name, requirement.line, requirement.id, f"requirement {requirement.id}")
-                    )
+                    ids[requirement.id].append(_Use(name, requirement.line, requirement.id, f"requirement {requirement.id}"))
+            elif isinstance(structure, SpecsDoc):
+                for spec in structure.specs:
+                    ids[spec.id].append(_Use(name, spec.line, spec.id, f"spec {spec.id}"))
             elif isinstance(structure, GlossaryDoc):
                 for term in structure.terms:
                     terms[term.term.casefold()].append(_Use(name, term.line, term.term, term_location(term)))
 
         findings: dict[str, list[ValidatorFinding]] = defaultdict(list)
-        for uses in requirement_ids.values():
+        for uses in ids.values():
             _report_duplicates(
                 uses,
                 findings,
-                code="requirement-id-duplicate",
-                message="the ID is used by {count} requirements",
-                hint="give each requirement its own ID; '{text}' is also used at {others}",
+                code="id-duplicate",
+                message="the ID is used {count} times among requirements and specs",
+                hint="give each requirement and spec its own ID; '{text}' is also used at {others}",
             )
         for uses in terms.values():
             _report_duplicates(

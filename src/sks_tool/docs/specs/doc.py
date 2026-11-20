@@ -1,13 +1,14 @@
 """The structure of a ``specs`` document.
 
-The blocks of a ``specs`` document are not defined yet, so the structure only
-holds its metadata and the document it was read from. Add its blocks here,
-each in its own subpackage.
+A ``specs`` document is a sequence of specs and nothing else; blank lines and
+``<!-- comments -->`` may appear between them. Its title and description are
+in the front matter.
 """
 
 from dataclasses import dataclass
 
 from sks_tool.docs.base import Metadata
+from sks_tool.docs.specs.spec.block import Spec
 from sks_tool.document import Document
 
 
@@ -18,3 +19,5 @@ class SpecsDoc:
     metadata: Metadata
     document: Document
     """The document this structure was read from."""
+    specs: tuple[Spec, ...]
+    """The specs that could be read, in file order."""

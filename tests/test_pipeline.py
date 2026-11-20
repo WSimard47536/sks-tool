@@ -35,8 +35,8 @@ def test_expected_document_types() -> None:
 
 def test_every_template_file_belongs_to_a_type() -> None:
     templates = resources.files("sks_tool").joinpath("templates")
-    expected = [f"{name}.md" for name in DOC_TYPES]
-    expected += [companion for doc_type in DOC_TYPES.values() for companion in doc_type.companions]
+    expected = {f"{name}.md" for name in DOC_TYPES}
+    expected |= {template for doc_type in DOC_TYPES.values() for _, template in doc_type.companions}
     assert sorted(entry.name for entry in templates.iterdir()) == sorted(expected)
 
 
@@ -44,8 +44,8 @@ def test_every_template_file_belongs_to_a_type() -> None:
 def test_template_passes_its_own_parser_and_validator(tmp_path: Path, name: str) -> None:
     """The templates are the known-good reference: each must be read and validated cleanly."""
     doc_type = DOC_TYPES[name]
-    for companion in doc_type.companions:
-        (tmp_path / companion).write_bytes(doc_type.companion(companion))
+    for file_name, template in doc_type.companions:
+        (tmp_path / file_name).write_bytes(doc_type.companion(template))
     result = check_file(write(tmp_path, doc_type.template()))
     assert result.findings == []
     assert result.validated
@@ -67,10 +67,10 @@ def test_template_starts_with_its_metadata_and_its_summary(name: str) -> None:
 @pytest.mark.parametrize(
     "text",
     [
-        # specs accepts any body, so only the encoding and the line endings are tested.
-        f"---\r\ntype: specs\r\n{META.replace(chr(10), chr(13) + chr(10))}---\r\n\r\nBody\r\n",  # Windows line endings
-        f"﻿---\ntype: specs\n{META}---\n",  # byte-order mark
-        f"---\ntype: specs\n{META}---",  # no trailing newline
+        # A one-term glossary, so only the encoding and the line endings are tested.
+        f"---\r\ntype: glossary\r\n{META.replace(chr(10), chr(13) + chr(10))}---\r\n\r\n## Sample\r\n\r\nOne reading.\r\n",
+        f"﻿---\ntype: glossary\n{META}---\n## Sample\n\nOne reading.\n",  # byte-order mark
+        f"---\ntype: glossary\n{META}---\n## Sample\n\nOne reading.",  # no trailing newline
     ],
 )
 def test_encoding_and_line_ending_variants_are_accepted(tmp_path: Path, text: str) -> None:
@@ -213,7 +213,7 @@ def test_project_reports_requirement_ids_used_in_several_documents(tmp_path: Pat
     assert results["glossary.md"].ok
     for name, other in (("a.md", "b.md"), ("b.md", "a.md")):
         findings = results[name].findings
-        assert {finding.code for finding in findings} == {"requirement-id-duplicate"}
+        assert {finding.code for finding in findings} == {"id-duplicate"}
         assert len(findings) == 5
         assert f"'LOG-001' is also used at {other}:10" in findings[0].hint
         assert not results[name].ok
@@ -226,10 +226,15 @@ def test_findings_are_in_reading_order(tmp_path: Path) -> None:
         "## A\n"  # 5
         "Type: Functional\n"  # 6
         "\n"  # 7
-        "The logger logs.\n"  # 8: a validation finding
+        "Status: Pending\n"  # 8
         "\n"  # 9
-        "- Notes: x\n"  # 10: a parse finding
-        "<!-- never closed\n"  # 11: a parse finding, found before the one above
+        "The logger logs.\n"  # 10: a validation finding
+        "\n"  # 11
+        "- Notes: x\n"  # 12: a parse finding
+        "\n"  # 13
+        "Acceptance criteria:\n"  # 14
+        "- [ ] It works.\n"  # 15
+        "<!-- never closed\n"  # 16: a parse finding, found before the one above
     )
     findings = check_file(write(tmp_path, text)).findings
     assert [(finding.kind, finding.code) for finding in findings] == [

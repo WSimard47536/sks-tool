@@ -3,11 +3,16 @@ from pathlib import Path
 import pytest
 
 from sks_tool.docs.base import Metadata
+from sks_tool.docs.diagram import Diagram
 from sks_tool.docs.glossary.doc import GlossaryDoc
 from sks_tool.docs.glossary.term.block import Term
-from sks_tool.docs.overview.doc import Diagram, OverviewDoc, TextSection
+from sks_tool.docs.overview.doc import OverviewDoc, TextSection
+from sks_tool.docs.req_spec_shared import AcceptanceCriterion
 from sks_tool.docs.requirements.doc import RequirementsDoc
 from sks_tool.docs.requirements.requirement.block import Requirement
+from sks_tool.docs.specs.doc import SpecsDoc
+from sks_tool.docs.specs.spec.block import Spec
+from sks_tool.doctypes import BLANK_DIAGRAM as BLANK_DIAGRAM_TEMPLATE
 from sks_tool.doctypes import DOC_TYPES
 from sks_tool.document import Document
 from sks_tool.findings import ValidatorFinding
@@ -18,9 +23,14 @@ from sks_tool.validators.overview.validator import OverviewValidator
 from sks_tool.validators.project import ProjectValidator
 from sks_tool.validators.requirements.requirement.validator import RequirementValidator
 from sks_tool.validators.requirements.validator import RequirementsValidator
+from sks_tool.validators.specs.spec.validator import SpecValidator
+from sks_tool.validators.specs.validator import SpecsValidator
 
 METADATA = Metadata(doc_type="requirements", title="A title", description="A description.")
 DOCUMENT = Document(path=Path("doc.md"), front_matter={}, body="", body_line=6)
+
+
+PENDING_CRITERIA = (AcceptanceCriterion(text="It works.", checked=False, line=30),)
 
 
 def requirement(
@@ -29,17 +39,27 @@ def requirement(
     id: str = "LOG-001",
     line: int = 10,
     type: str | None = "Functional",
+    status: str | None = "Pending",
+    criteria: tuple[AcceptanceCriterion, ...] = PENDING_CRITERIA,
 ) -> Requirement:
     return Requirement(
         id=id,
         type=type,
+        status=status,
         statement=statement,
         rationale=rationale,
+        criteria=criteria,
         line=line,
         type_line=None if type is None else line + 1,
+        status_line=None if status is None else line + 3,
         statement_line=line + 2,
         rationale_line=None if rationale is None else line + 4,
     )
+
+
+def criteria(*marks: bool) -> tuple[AcceptanceCriterion, ...]:
+    """Criteria checked or not, in order, on lines 30 onwards."""
+    return tuple(AcceptanceCriterion(text=f"Criterion {i}.", checked=mark, line=30 + i) for i, mark in enumerate(marks))
 
 
 def codes(findings: list[ValidatorFinding]) -> list[str]:
@@ -196,8 +216,8 @@ def test_unique_ids_pass() -> None:
 def test_an_id_used_twice_in_one_document_is_reported_at_both_places() -> None:
     findings = ProjectValidator().validate({"a.md": requirements_doc(("A", 6), ("A", 10))})
     assert [(finding.code, finding.line) for finding in findings["a.md"]] == [
-        ("requirement-id-duplicate", 6),
-        ("requirement-id-duplicate", 10),
+        ("id-duplicate", 6),
+        ("id-duplicate", 10),
     ]
     assert "also used at a.md:10" in findings["a.md"][0].hint
     assert "also used at a.md:6" in findings["a.md"][1].hint
@@ -280,7 +300,7 @@ def test_terms_and_requirement_ids_do_not_clash() -> None:
 
 # --- OverviewValidator --------------------------------------------------------
 
-BLANK_DIAGRAM = DOC_TYPES["overview"].companion("system_diagram.drawio.svg")
+BLANK_DIAGRAM = DOC_TYPES["overview"].companion(BLANK_DIAGRAM_TEMPLATE)
 
 
 def overview(
@@ -346,3 +366,200 @@ def test_diagram_rules(tmp_path: Path, path: str, content: bytes | None, expecte
     findings = OverviewValidator().validate(overview(tmp_path, diagram_path=path))
     assert codes(findings) == expected
     assert all((finding.location, finding.line) == (("system diagram",), 16) for finding in findings)
+
+
+def test_a_spec_cannot_reuse_a_requirement_id() -> None:
+    structures = {"r.md": requirements_doc(("LOG-001", 6)), "s.md": specs_doc(spec(id="LOG-001", line=8))}
+    findings = ProjectValidator().validate(structures)
+    assert [(finding.code, finding.location) for finding in findings["s.md"]] == [("id-duplicate", ("spec LOG-001",))]
+    assert findings["s.md"][0].hint.endswith("'LOG-001' is also used at r.md:6")
+    assert findings["r.md"][0].hint.endswith("'LOG-001' is also used at s.md:8")
+
+
+# --- Status and acceptance criteria (requirements and specs) ------------------
+
+
+@pytest.mark.parametrize(
+    ("status", "marks", "expected"),
+    [
+        ("Pending", (False, False), []),
+        ("Pending", (True, False), ["status-pending-checked"]),
+        ("Pending", (True, True), ["status-pending-checked"]),  # one finding, not two
+        ("Underway", (True, False), []),
+        ("Underway", (False, False), []),
+        ("Underway", (True, True), ["status-all-checked"]),
+        ("Unfulfilled", (True, False), []),
+        ("Unfulfilled", (True, True), ["status-all-checked"]),
+        ("Fulfilled", (True, True), []),
+        ("Fulfilled", (True, False), ["status-fulfilled-unchecked"]),
+    ],
+)
+def test_the_checkboxes_agree_with_the_status(status: str, marks: tuple[bool, ...], expected: list[str]) -> None:
+    findings = RequirementValidator().validate(
+        requirement("The logger **shall** log.", status=status, criteria=criteria(*marks))
+    )
+    assert codes(findings) == expected
+    assert all((finding.location, finding.line) == (("requirement LOG-001", "status"), 13) for finding in findings)
+
+
+@pytest.mark.parametrize(
+    ("written", "message"),
+    [("Done", "'Done' is not a requirement status"), ("pending", "'pending' is not a requirement status"), ("", "is empty")],
+)
+def test_an_unknown_status_is_reported_and_not_compared_with_the_checkboxes(written: str, message: str) -> None:
+    findings = RequirementValidator().validate(
+        requirement("The logger **shall** log.", status=written, criteria=criteria(True, True))
+    )
+    assert [(finding.code, finding.message) for finding in findings] == [("requirement-status-unknown", message)]
+    assert "Pending, Unfulfilled, Underway, Fulfilled" in findings[0].hint
+
+
+def test_a_missing_status_is_not_reported_again() -> None:
+    """The parser already reported the missing status line."""
+    assert RequirementValidator().validate(requirement("The logger **shall** log.", status=None)) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [("x" * 200, []), ("x" * 201, ["criterion-too-long"]), ("", ["criterion-empty"])],
+)
+def test_criterion_rules(text: str, expected: list[str]) -> None:
+    entry = requirement("The logger **shall** log.", criteria=(AcceptanceCriterion(text=text, checked=False, line=31),))
+    findings = RequirementValidator().validate(entry)
+    assert codes(findings) == expected
+    assert all(
+        (finding.location, finding.line) == (("requirement LOG-001", "acceptance criteria"), 31) for finding in findings
+    )
+
+
+# --- SpecValidator and SpecsValidator -----------------------------------------
+
+
+def spec(
+    statement: str = "The logger batches its flash writes.",
+    rationale: str | None = "Flash writes are slow.",
+    id: str = "LOG-S-001",
+    line: int = 10,
+    type: str | None = "Non-functional",
+    diagram: str | None = None,
+) -> Spec:
+    return Spec(
+        id=id,
+        type=type,
+        status="Pending",
+        statement=statement,
+        rationale=rationale,
+        criteria=PENDING_CRITERIA,
+        diagram=None if diagram is None else Diagram(alt="Design", path=diagram, line=40),
+        line=line,
+        type_line=None if type is None else line + 1,
+        status_line=line + 3,
+        statement_line=line + 2,
+        rationale_line=None if rationale is None else line + 4,
+    )
+
+
+def specs_doc(*specs: Spec) -> SpecsDoc:
+    return SpecsDoc(metadata=METADATA, document=DOCUMENT, specs=specs)
+
+
+def test_a_valid_spec_passes(tmp_path: Path) -> None:
+    assert SpecValidator(tmp_path).validate(spec()) == []
+
+
+@pytest.mark.parametrize("valid", ["Functional", "Non-functional"])
+def test_each_spec_type_passes(tmp_path: Path, valid: str) -> None:
+    assert SpecValidator(tmp_path).validate(spec(type=valid)) == []
+
+
+def test_a_spec_has_no_business_type(tmp_path: Path) -> None:
+    findings = SpecValidator(tmp_path).validate(spec(type="Business"))
+    assert [(finding.code, finding.message) for finding in findings] == [
+        ("spec-type-unknown", "'Business' is not a spec type")
+    ]
+    assert findings[0].hint.endswith("a business requirement belongs in a requirements document")
+
+
+@pytest.mark.parametrize(
+    ("statement", "expected"),
+    [
+        ("x" * 199 + ".", []),  # 200 characters
+        ("x" * 200 + ".", ["statement-too-long"]),
+        ("The logger batches writes. Then it flushes.", ["statement-several-sentences"]),
+        ("The logger batches writes", ["statement-no-final-period"]),
+        ("The logger batches\nits writes.", ["statement-not-one-line"]),
+        ("The logger **shall** batch its writes.", []),  # no rule about "shall" in a spec
+    ],
+)
+def test_spec_statement_rules(tmp_path: Path, statement: str, expected: list[str]) -> None:
+    findings = SpecValidator(tmp_path).validate(spec(statement=statement))
+    assert codes(findings) == expected
+    assert all(finding.location == ("spec LOG-S-001", "statement") for finding in findings)
+
+
+def test_a_missing_spec_rationale_is_not_reported_again(tmp_path: Path) -> None:
+    """The parser already reported it."""
+    assert SpecValidator(tmp_path).validate(spec(rationale=None)) == []
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("LOG-S-001.drawio.svg", []),
+        ("diagrams/LOG-S-001.drawio.svg", []),  # any folder, relative to the document
+        ("ring_buffer.drawio.svg", ["diagram-name-mismatch"]),
+        ("LOG-S-001.svg", ["diagram-not-drawio-svg"]),
+    ],
+)
+def test_a_spec_diagram_is_named_after_its_id(tmp_path: Path, path: str, expected: list[str]) -> None:
+    target = tmp_path / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(BLANK_DIAGRAM)
+    findings = SpecValidator(tmp_path).validate(spec(diagram=path))
+    assert codes(findings) == expected
+    assert all((finding.location, finding.line) == (("spec LOG-S-001", "diagram"), 40) for finding in findings)
+
+
+def test_a_specs_document_needs_at_least_one_spec() -> None:
+    assert codes(SpecsValidator().validate(specs_doc())) == ["specs-none"]
+
+
+def test_each_spec_of_the_document_is_validated_with_its_folder(tmp_path: Path) -> None:
+    doc = SpecsDoc(
+        metadata=METADATA,
+        document=Document(path=tmp_path / "specs.md", front_matter={}, body="", body_line=6),
+        specs=(spec(id="A"), spec(id="B", diagram="B.drawio.svg")),
+    )
+    findings = SpecsValidator().validate(doc)
+    assert [(finding.code, finding.location[0]) for finding in findings] == [("diagram-file-not-found", "spec B")]
+
+
+@pytest.mark.parametrize(
+    ("status", "marks", "message"),
+    [
+        ("Fulfilled", (True, False), "is Fulfilled but 1 criterion is unchecked"),
+        ("Fulfilled", (False, False), "is Fulfilled but 2 criteria are unchecked"),
+        ("Pending", (True, False), "is Pending but 1 criterion is checked"),
+    ],
+)
+def test_status_mismatch_messages_count_the_criteria(status: str, marks: tuple[bool, ...], message: str) -> None:
+    entry = requirement("The logger **shall** log.", status=status, criteria=criteria(*marks))
+    assert [finding.message for finding in RequirementValidator().validate(entry)] == [message]
+
+
+@pytest.mark.parametrize(
+    ("entry_id", "message"),
+    [
+        ("LOG-001", None),
+        ("LOG 001", "the ID contains whitespace"),
+        ("LOG-001(a)", "the ID contains parentheses"),
+        ("LOG (1)", "the ID contains whitespace and parentheses"),
+    ],
+)
+def test_an_id_has_no_whitespace_or_parentheses(tmp_path: Path, entry_id: str, message: str | None) -> None:
+    for findings, entry in (
+        (RequirementValidator().validate(requirement("The logger **shall** log.", id=entry_id)), "requirement"),
+        (SpecValidator(tmp_path).validate(spec(id=entry_id)), "spec"),
+    ):
+        expected = [] if message is None else [("id-invalid", message, (f"{entry} {entry_id}",), 10)]
+        assert [(finding.code, finding.message, finding.location, finding.line) for finding in findings] == expected

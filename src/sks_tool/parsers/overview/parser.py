@@ -14,18 +14,17 @@ section without its content, and any other content are parse findings; the
 rest of the document is still read.
 """
 
-import re
 from collections.abc import Sequence
 
 from sks_tool.docs.base import Metadata
-from sks_tool.docs.overview.doc import PURPOSE, SECTIONS, SUMMARY, SYSTEM_DIAGRAM, Diagram, OverviewDoc, TextSection
+from sks_tool.docs.diagram import Diagram
+from sks_tool.docs.overview.doc import PURPOSE, SECTIONS, SUMMARY, SYSTEM_DIAGRAM, OverviewDoc, TextSection
 from sks_tool.document import Document
 from sks_tool.findings import ParserFinding
+from sks_tool.parsers.diagram import IMAGE_SYNTAX, read_image
 from sks_tool.parsers.markdown import Block, EntryKind, Line, read_blocks
 
 SECTION = EntryKind(name="section", heading="<section>", headings_are="section headings")
-
-_IMAGE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<path>[^()\s]+)\)")
 
 
 class OverviewParser:
@@ -153,12 +152,12 @@ def _read_diagram(block: Block | None, findings: list[ParserFinding]) -> Diagram
     images: list[Diagram] = []
     others: list[Line] = []
     for number, text in block.lines:
-        match = _IMAGE.fullmatch(text.strip())
-        if match is not None:
-            images.append(Diagram(alt=match["alt"], path=match["path"], line=number))
+        image = read_image(number, text)
+        if image is not None:
+            images.append(image)
         else:
             others.append((number, text))
-    _report_unexpected(heading, others, findings, "the diagram image, written as ![<alt text>](<file>.drawio.svg),")
+    _report_unexpected(heading, others, findings, f"the diagram image, written as {IMAGE_SYNTAX},")
     if not images:
         findings.append(
             ParserFinding(

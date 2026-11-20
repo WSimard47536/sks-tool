@@ -47,51 +47,86 @@ The document types are:
 | `glossary` | What the project's terms mean. |
 
 Each template (see [Creating a document](#creating-a-document)) starts with a
-comment stating what the document is for. The bodies of `requirements`,
-`glossary` and `overview` documents are defined below; the blocks of `specs`
-documents are not defined yet, so their template holds only the front matter
-and that comment, and every body is accepted.
+comment stating what the document is for, then example content for a
+fictional flight data logger; replace it with your own. The body of each type
+is defined below.
 
-### Requirements documents
+### Requirements and specs documents
 
-A `requirements` document is a sequence of requirements and nothing else:
-outside them, only blank lines and `<!-- comments -->` are allowed. Each
-requirement is written as:
+A `requirements` document is a sequence of requirements, and a `specs`
+document a sequence of specs, and nothing else: outside them, only blank
+lines and `<!-- comments -->` are allowed. A requirement says what the system
+must do; a spec records a design decision, "we do it this way, and this is
+why", the kind of information that would not go in the code's own
+documentation. Both are written the same way:
 
 ```markdown
-## LOG-002
+## LOG-004
 
-Type: Non-functional
+Type: Functional
 
-The logger **shall** sample each accelerometer axis at 1 kHz.
+Status: Underway
 
-- Rationale: Vibration analysis needs content up to 400 Hz, which requires sampling above 800 Hz.
+The logger **shall** close the current log file within 50 ms of a power-loss signal.
+
+- Rationale: The hold-up capacitor keeps the logger powered for 80 ms after power loss.
+
+Acceptance criteria:
+
+- [x] The bench test closes the file within 50 ms in 100 out of 100 power cuts.
+- [ ] The flight test log shows no truncated file after a power loss.
 ```
 
-- **ID**: the level-2 heading. It must be unique across every document listed
-  in `sks.toml`; there are no other naming rules yet.
+In this order:
+
+- **ID**: the level-2 heading, with no whitespace or parentheses (it names
+  files and links). It must be unique across every requirement and spec
+  listed in `sks.toml`, together; there are no other naming rules yet.
 - **Type**: the first line under the heading, required, written exactly as
   `Type: <type>` and followed by a blank line, with one of:
-  - `Business`: what the system must do to fulfil its purpose;
+  - `Business` (requirements only): what the system must do to fulfil its
+    purpose;
   - `Functional`: what it must do to fulfil the business requirements;
   - `Non-functional`: how it must do it, such as safety standards or
     performance.
-- **Statement**: the paragraph under the type line, required. It must be a
-  single sentence on one line, ending with `.` (no `.`, `!` or `?` followed
-  by a space before that, so write abbreviations such as "e.g." in full). It
-  contains the word **shall** exactly once, in bold and lowercase
-  (`**shall**`), and is at most 100 characters long as rendered (the `**`
-  do not count). It states what the system must do, never what it must not:
-  "shall not" is rejected, so reword it positively ("shall write each log to
-  a new file" rather than "shall not overwrite a log file").
+- **Status**: the next line, required, written exactly as `Status: <status>`
+  and followed by a blank line, with one of `Pending` (work has not started),
+  `Unfulfilled` (the current implementation is not satisfactory), `Underway`
+  or `Fulfilled`.
+- **Statement**: the next paragraph, required: a single sentence on one line,
+  ending with `.` (no `.`, `!` or `?` followed by a space before that, so
+  write abbreviations such as "e.g." in full).
 - **Fields**: a bullet list after the statement, one field per line as
-  `- <Field>: <value>`. The only field for now is `Rationale`: optional, why
-  the requirement exists, at most 200 characters, and not empty when present.
+  `- <Field>: <value>`. The only field for now is `Rationale`, at most 200
+  characters and not empty when present.
+- **Acceptance criteria**: required: after a blank line, the line
+  `Acceptance criteria:`, then a
+  checkbox list with at least one criterion, one per line, at most 200
+  characters: `- [ ] <criterion>`, or `- [x] <criterion>` once it is met. The
+  checkboxes must agree with the status: `Fulfilled` needs every box checked,
+  any other status at least one unchecked, and `Pending` none checked.
+
+Requirements and specs differ in a few rules:
+
+| | Requirement | Spec |
+|---|---|---|
+| Type | `Business`, `Functional` or `Non-functional` | `Functional` or `Non-functional` |
+| Statement | at most 100 characters as rendered (the `**` do not count); contains **shall** exactly once, in bold and lowercase (`**shall**`); never "shall not", so reword it positively ("shall write each log to a new file" rather than "shall not overwrite a log file") | at most 200 characters; no rule about "shall" |
+| Rationale | optional | required |
+| Diagram | none | optional, last, after a blank line: one image named after the spec's ID, `![<alt text>](<ID>.drawio.svg)` |
+
+A spec's diagram follows the same rules as an overview's system diagram (see
+[Overview documents](#overview-documents)), and its file must be named
+`<ID>.drawio.svg`, in any folder relative to the document.
 
 Comments may span several lines but must take whole lines. A document must
-contain at least one requirement. The `requirements` template holds five
-example requirements for a fictional data logger; replace them with your own,
-since their IDs clash with any other document made from the template.
+contain at least one requirement or spec. The templates' example IDs clash
+with any other document made from the same template, so replace them.
+
+The checkboxes render as checkboxes on GitHub and in VS Code's Markdown
+preview; a mkdocs site needs the `pymdownx.tasklist` extension of
+[PyMdown Extensions](https://facelessuser.github.io/pymdown-extensions/extensions/tasklist/)
+(installed with mkdocs Material) enabled in its `mkdocs.yml`.
 
 ### Glossary documents
 
@@ -177,7 +212,8 @@ uv run --project tools/sks-tool sks-tool new requirements docs/reqs.md  # create
 ```
 
 `new overview` also creates a blank `system_diagram.drawio.svg` next to the
-document, for its system diagram. `new` refuses to overwrite an existing
+document, for its system diagram, and `new specs` a blank `LOG-S-001.drawio.svg`
+for the diagram of its first example spec. `new` refuses to overwrite an existing
 file, and writes nothing if any of the files it would create already exists.
 
 ## Validating documents

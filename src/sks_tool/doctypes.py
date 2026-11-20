@@ -29,6 +29,9 @@ from sks_tool.validators.overview.validator import OverviewValidator
 from sks_tool.validators.requirements.validator import RequirementsValidator
 from sks_tool.validators.specs.validator import SpecsValidator
 
+BLANK_DIAGRAM = "blank_diagram.drawio.svg"
+"""The template of an empty draw.io diagram, which ``new`` copies for the diagrams a template shows."""
+
 
 @dataclass(frozen=True)
 class DocType[T]:
@@ -42,17 +45,17 @@ class DocType[T]:
     summary: str
     parser: Parser[T]
     validator: Validator[T]
-    companions: tuple[str, ...] = ()
-    """Files ``new`` creates next to the document, from ``sks_tool/templates/<file>``,
-    such as the diagram an overview shows."""
+    companions: tuple[tuple[str, str], ...] = ()
+    """Files ``new`` creates next to the document, as (file name, template file in
+    ``sks_tool/templates/``) pairs, such as the diagram an overview shows."""
 
     def template(self) -> str:
         """Return the text a new document of this type starts from."""
         return resources.files("sks_tool").joinpath("templates", f"{self.name}.md").read_text(encoding="utf-8")
 
-    def companion(self, file_name: str) -> bytes:
-        """Return the content of one of the ``companions`` files."""
-        return resources.files("sks_tool").joinpath("templates", file_name).read_bytes()
+    def companion(self, template_file: str) -> bytes:
+        """Return the content of a companion's template file."""
+        return resources.files("sks_tool").joinpath("templates", template_file).read_bytes()
 
 
 _REQUIREMENTS = DocType(
@@ -66,13 +69,14 @@ _SPECS = DocType(
     "How it is built: diagrams, the design choices made, and why.",
     SpecsParser(),
     SpecsValidator(),
+    companions=(("LOG-S-001.drawio.svg", BLANK_DIAGRAM),),
 )
 _OVERVIEW = DocType(
     "overview",
     "What the project is, what it does and why, with a system diagram.",
     OverviewParser(),
     OverviewValidator(),
-    companions=("system_diagram.drawio.svg",),
+    companions=(("system_diagram.drawio.svg", BLANK_DIAGRAM),),
 )
 _GLOSSARY = DocType(
     "glossary",

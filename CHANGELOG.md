@@ -50,3 +50,15 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Defined `overview` documents: a Summary and a Purpose of at most 200
   characters each, then a System diagram shown from an editable `.drawio.svg`
   file. `new overview` also creates a blank `system_diagram.drawio.svg`.
+- Defined `specs` documents: design decisions written like requirements,
+  with a `Functional` or `Non-functional` type, a statement of at most 200
+  characters, a required rationale and an optional diagram named after the
+  spec's ID. `new specs` also creates the example spec's blank diagram.
+- Requirements and specs now have a `Status:` line (`Pending`, `Unfulfilled`,
+  `Underway` or `Fulfilled`) and an `Acceptance criteria:` checkbox list that
+  must agree with the status.
+- Requirement and spec IDs are unique together; the duplicate finding is now
+  `id-duplicate` (was `requirement-id-duplicate`).
+- Requirement and spec IDs may not contain whitespace or parentheses
+  (`id-invalid`), and a blank line is required before the acceptance
+  criteria and before a spec's diagram, so each renders as its own paragraph.

@@ -95,8 +95,8 @@ Steps 2 and 3 run whenever the file loaded; steps 4 and 5 need a usable
 `type`. A missing title or description is reported but does not stop steps 4
 and 5. `check_project`, also in `pipeline.py`, runs these steps for every
 document listed in `sks.toml`, then `validators/project.py`
-(`ProjectValidator`) checks the rules that span documents: unique requirement
-IDs and unique glossary terms.
+(`ProjectValidator`) checks the rules that span documents: unique IDs across
+requirements and specs, and unique glossary terms.
 
 Steps 1, 2 and 4 report `ParserFinding`s: the format is wrong. Steps 3 and 5
 and `ProjectValidator` report `ValidatorFinding`s: the content breaks a rule
@@ -104,16 +104,22 @@ and `ProjectValidator` report `ValidatorFinding`s: the content breaks a rule
 validators the `Validator` interface, both in their package's `base.py`.
 
 `docs/`, `parsers/` and `validators/` follow the same layout: one package per
-document type, and inside it one subpackage per block. So far `requirements`
-and `glossary` have blocks:
+document type, and inside it one subpackage per block:
 
 ```
 docs/requirements/doc.py                          RequirementsDoc
-docs/requirements/requirement/block.py            Requirement
+docs/requirements/requirement/block.py            Requirement, RequirementType
 parsers/requirements/parser.py                    RequirementsParser: splits the body into blocks
 parsers/requirements/requirement/parser.py        RequirementParser: one block
 validators/requirements/validator.py              RequirementsValidator: at least one requirement
-validators/requirements/requirement/validator.py  RequirementValidator: statement and rationale rules
+validators/requirements/requirement/validator.py  RequirementValidator: type and "shall" rules
+
+docs/specs/doc.py                                 SpecsDoc
+docs/specs/spec/block.py                          Spec, SpecType
+parsers/specs/parser.py                           SpecsParser: splits the body into blocks
+parsers/specs/spec/parser.py                      SpecParser: one block, its required rationale
+validators/specs/validator.py                     SpecsValidator: at least one spec
+validators/specs/spec/validator.py                SpecValidator: type, statement length, diagram name
 
 docs/glossary/doc.py                              GlossaryDoc
 docs/glossary/term/block.py                       Term
@@ -127,21 +133,33 @@ An `overview` has three fixed sections rather than repeated blocks, so it has
 no block subpackages:
 
 ```
-docs/overview/doc.py                              OverviewDoc, TextSection, Diagram
+docs/overview/doc.py                              OverviewDoc, TextSection
 parsers/overview/parser.py                        OverviewParser: the sections, their order and content
-validators/overview/validator.py                  OverviewValidator: text lengths, the .drawio.svg file
+validators/overview/validator.py                  OverviewValidator: text lengths, the system diagram
 ```
 
-`parsers/markdown.py` holds the Markdown reading shared by every document
-made of `##` blocks or sections: removing comments, splitting the body at
-level-2 headings, and reporting other headings and text outside them. A new
-type built from `##` headings should use it too.
+Code used by more than one type lives next to the type packages, in the same
+three packages:
+
+```
+parsers/markdown.py                               every type built from ## headings: comments, blocks
+docs|parsers|validators/req_spec_shared.py        requirements and specs: type and status lines, statement,
+                                                  rationale, acceptance criteria and their agreement with the status
+docs|parsers|validators/diagram.py                every type with a diagram (overview, specs): the image, the
+                                                  .drawio.svg file and its draw.io content
+```
+
+`docs/base.py`, `parsers/base.py` and `validators/base.py` are kept for what
+every document type shares: the front matter metadata and the `Parser` and
+`Validator` interfaces.
 
 - `src/sks_tool/templates/<type>.md` is the template `new` copies. A test
   checks that every template passes its own parser and validator, so they
   cannot drift apart.
-- `src/sks_tool/templates/` also holds the companion files `new` creates next
-  to a document, such as the blank `system_diagram.drawio.svg` of an overview.
+- `src/sks_tool/templates/blank_diagram.drawio.svg` is an empty draw.io
+  diagram. `new` copies it next to an overview as `system_diagram.drawio.svg`,
+  and next to a specs document as `LOG-S-001.drawio.svg`, for the diagrams
+  their templates show.
 - `src/sks_tool/doctypes.py` registers the types: each one's summary (shown
   by `sks-tool types` and repeated as a comment in the template), parser,
   validator and companion files. The type checker rejects a type whose parser

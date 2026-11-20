@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 
 from sks_tool import pipeline
 from sks_tool.cli import app
+from sks_tool.doctypes import BLANK_DIAGRAM as BLANK_DIAGRAM_TEMPLATE
 from sks_tool.doctypes import DOC_TYPES
 from sks_tool.findings import ValidatorFinding
 
@@ -67,7 +68,7 @@ def test_new_overview_also_creates_its_blank_diagram(project: Path) -> None:
     result = runner.invoke(app, ["new", "overview", "docs/fc.md"])
     assert result.exit_code == 0
     diagram = project / "docs" / "system_diagram.drawio.svg"
-    assert diagram.read_bytes() == DOC_TYPES["overview"].companion("system_diagram.drawio.svg")
+    assert diagram.read_bytes() == DOC_TYPES["overview"].companion(BLANK_DIAGRAM_TEMPLATE)
     assert str(diagram.relative_to(project)) in result.output
 
 
@@ -217,9 +218,11 @@ def test_validate_reports_ids_used_in_two_documents(project: Path) -> None:
     result = runner.invoke(app, ["validate"])
     assert result.exit_code == 1
     lines = result.output.splitlines()
-    assert "a.md:10: validate: requirement LOG-001: the ID is used by 2 requirements [requirement-id-duplicate]" in lines
-    assert "    fix: give each requirement its own ID; 'LOG-001' is also used at b.md:10" in lines
-    assert "    fix: give each requirement its own ID; 'LOG-001' is also used at a.md:10" in lines
+    assert (
+        "a.md:10: validate: requirement LOG-001: the ID is used 2 times among requirements and specs [id-duplicate]" in lines
+    )
+    assert "    fix: give each requirement and spec its own ID; 'LOG-001' is also used at b.md:10" in lines
+    assert "    fix: give each requirement and spec its own ID; 'LOG-001' is also used at a.md:10" in lines
     assert "2 document(s) checked: 0 ok, 2 failed (0 parse finding(s), 10 validation finding(s), 0 skipped)" in lines
 
     result = runner.invoke(app, ["validate", "--json"])
