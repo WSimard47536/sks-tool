@@ -5,13 +5,16 @@ import pytest
 from sks_tool.docs.base import Metadata
 from sks_tool.docs.glossary.doc import GlossaryDoc
 from sks_tool.docs.glossary.term.block import Term
+from sks_tool.docs.overview.doc import Diagram, OverviewDoc, TextSection
 from sks_tool.docs.requirements.doc import RequirementsDoc
 from sks_tool.docs.requirements.requirement.block import Requirement
+from sks_tool.doctypes import DOC_TYPES
 from sks_tool.document import Document
 from sks_tool.findings import ValidatorFinding
 from sks_tool.validators.base import CommonValidator
 from sks_tool.validators.glossary.term.validator import TermValidator
 from sks_tool.validators.glossary.validator import GlossaryValidator
+from sks_tool.validators.overview.validator import OverviewValidator
 from sks_tool.validators.project import ProjectValidator
 from sks_tool.validators.requirements.requirement.validator import RequirementValidator
 from sks_tool.validators.requirements.validator import RequirementsValidator
@@ -273,3 +276,73 @@ def test_a_term_defined_in_two_glossaries_is_reported_in_each_ignoring_case() ->
 def test_terms_and_requirement_ids_do_not_clash() -> None:
     structures = {"g.md": glossary(term("LOG-001")), "r.md": requirements_doc(("LOG-001", 6))}
     assert ProjectValidator().validate(structures) == {}
+
+
+# --- OverviewValidator --------------------------------------------------------
+
+BLANK_DIAGRAM = DOC_TYPES["overview"].companion("system_diagram.drawio.svg")
+
+
+def overview(
+    folder: Path,
+    summary: str | None = "What it is.",
+    purpose: str | None = "Why it is built.",
+    diagram_path: str | None = "system_diagram.drawio.svg",
+) -> OverviewDoc:
+    return OverviewDoc(
+        metadata=METADATA,
+        document=Document(path=folder / "overview.md", front_matter={}, body="", body_line=6),
+        summary=None if summary is None else TextSection(text=summary, line=8),
+        purpose=None if purpose is None else TextSection(text=purpose, line=12),
+        system_diagram=None if diagram_path is None else Diagram(alt="System diagram", path=diagram_path, line=16),
+    )
+
+
+def test_a_complete_overview_passes(tmp_path: Path) -> None:
+    (tmp_path / "system_diagram.drawio.svg").write_bytes(BLANK_DIAGRAM)
+    assert OverviewValidator().validate(overview(tmp_path)) == []
+
+
+def test_missing_sections_are_not_reported_again(tmp_path: Path) -> None:
+    """The parser already reported them."""
+    assert OverviewValidator().validate(overview(tmp_path, summary=None, purpose=None, diagram_path=None)) == []
+
+
+@pytest.mark.parametrize(
+    ("summary", "purpose", "expected"),
+    [
+        ("x" * 200, "y" * 200, []),
+        ("x" * 201, "Why.", ["summary-too-long"]),
+        ("What.", "y" * 201, ["purpose-too-long"]),
+        ("What\nit is.", "Why.", ["summary-not-one-line"]),
+        ("What.", "Why\nit is built.", ["purpose-not-one-line"]),
+    ],
+)
+def test_summary_and_purpose_rules(tmp_path: Path, summary: str, purpose: str, expected: list[str]) -> None:
+    (tmp_path / "system_diagram.drawio.svg").write_bytes(BLANK_DIAGRAM)
+    findings = OverviewValidator().validate(overview(tmp_path, summary=summary, purpose=purpose))
+    assert codes(findings) == expected
+
+
+@pytest.mark.parametrize(
+    ("path", "content", "expected"),
+    [
+        ("diagrams/system_diagram.drawio.svg", BLANK_DIAGRAM, []),  # resolved from the document's folder
+        ("https://example.com/d.drawio.svg", None, ["diagram-path-not-relative"]),
+        ("/abs/system_diagram.drawio.svg", None, ["diagram-path-not-relative"]),
+        ("C:/abs/system_diagram.drawio.svg", None, ["diagram-path-not-relative"]),
+        ("system_diagram.svg", None, ["diagram-not-drawio-svg"]),
+        ("system_diagram.drawio", None, ["diagram-not-drawio-svg"]),
+        ("absent.drawio.svg", None, ["diagram-file-not-found"]),
+        ("plain.drawio.svg", b'<svg xmlns="http://www.w3.org/2000/svg"><g/></svg>', ["diagram-not-editable"]),
+        ("binary.drawio.svg", b"\xff\xfe\x00", ["diagram-not-editable"]),
+    ],
+)
+def test_diagram_rules(tmp_path: Path, path: str, content: bytes | None, expected: list[str]) -> None:
+    if content is not None:
+        target = tmp_path / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+    findings = OverviewValidator().validate(overview(tmp_path, diagram_path=path))
+    assert codes(findings) == expected
+    assert all((finding.location, finding.line) == (("system diagram",), 16) for finding in findings)

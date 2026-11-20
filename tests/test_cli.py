@@ -63,6 +63,23 @@ def test_new_does_not_overwrite(project: Path) -> None:
     assert (project / "doc.md").read_text(encoding="utf-8") == "keep me"
 
 
+def test_new_overview_also_creates_its_blank_diagram(project: Path) -> None:
+    result = runner.invoke(app, ["new", "overview", "docs/fc.md"])
+    assert result.exit_code == 0
+    diagram = project / "docs" / "system_diagram.drawio.svg"
+    assert diagram.read_bytes() == DOC_TYPES["overview"].companion("system_diagram.drawio.svg")
+    assert str(diagram.relative_to(project)) in result.output
+
+
+def test_new_overview_writes_nothing_if_its_diagram_exists(project: Path) -> None:
+    """Writing the document but not its diagram would leave a half-created pair."""
+    (project / "system_diagram.drawio.svg").write_text("keep me", encoding="utf-8")
+    result = runner.invoke(app, ["new", "overview", "overview.md"])
+    assert result.exit_code == 2
+    assert not (project / "overview.md").exists()
+    assert (project / "system_diagram.drawio.svg").read_text(encoding="utf-8") == "keep me"
+
+
 def test_validate_reports_failures_as_text(project: Path) -> None:
     runner.invoke(app, ["new", "glossary", "good.md"])
     (project / "bad.md").write_bytes(b"# No front matter\n")

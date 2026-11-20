@@ -47,3 +47,6 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Every requirement now states its type on the first line under its ID:
   `Type: Business`, `Type: Functional` or `Type: Non-functional`, followed
   by a blank line. The template shows each type.
+- Defined `overview` documents: a Summary and a Purpose of at most 200
+  characters each, then a System diagram shown from an editable `.drawio.svg`
+  file. `new overview` also creates a blank `system_diagram.drawio.svg`.

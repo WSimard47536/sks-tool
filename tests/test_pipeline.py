@@ -35,13 +35,18 @@ def test_expected_document_types() -> None:
 
 def test_every_template_file_belongs_to_a_type() -> None:
     templates = resources.files("sks_tool").joinpath("templates")
-    assert sorted(entry.name for entry in templates.iterdir()) == sorted(f"{name}.md" for name in DOC_TYPES)
+    expected = [f"{name}.md" for name in DOC_TYPES]
+    expected += [companion for doc_type in DOC_TYPES.values() for companion in doc_type.companions]
+    assert sorted(entry.name for entry in templates.iterdir()) == sorted(expected)
 
 
 @pytest.mark.parametrize("name", list(DOC_TYPES))
 def test_template_passes_its_own_parser_and_validator(tmp_path: Path, name: str) -> None:
     """The templates are the known-good reference: each must be read and validated cleanly."""
-    result = check_file(write(tmp_path, DOC_TYPES[name].template()))
+    doc_type = DOC_TYPES[name]
+    for companion in doc_type.companions:
+        (tmp_path / companion).write_bytes(doc_type.companion(companion))
+    result = check_file(write(tmp_path, doc_type.template()))
     assert result.findings == []
     assert result.validated
     assert result.ok

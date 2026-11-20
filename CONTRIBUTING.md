@@ -123,18 +123,29 @@ validators/glossary/validator.py                  GlossaryValidator: at least on
 validators/glossary/term/validator.py             TermValidator: term and definition lengths
 ```
 
+An `overview` has three fixed sections rather than repeated blocks, so it has
+no block subpackages:
+
+```
+docs/overview/doc.py                              OverviewDoc, TextSection, Diagram
+parsers/overview/parser.py                        OverviewParser: the sections, their order and content
+validators/overview/validator.py                  OverviewValidator: text lengths, the .drawio.svg file
+```
+
 `parsers/markdown.py` holds the Markdown reading shared by every document
-made of `##` blocks: removing comments, splitting the body at level-2
-headings, and reporting other headings and text outside the blocks. A new
-type built from `##` blocks should use it too.
+made of `##` blocks or sections: removing comments, splitting the body at
+level-2 headings, and reporting other headings and text outside them. A new
+type built from `##` headings should use it too.
 
 - `src/sks_tool/templates/<type>.md` is the template `new` copies. A test
   checks that every template passes its own parser and validator, so they
   cannot drift apart.
+- `src/sks_tool/templates/` also holds the companion files `new` creates next
+  to a document, such as the blank `system_diagram.drawio.svg` of an overview.
 - `src/sks_tool/doctypes.py` registers the types: each one's summary (shown
-  by `sks-tool types` and repeated as a comment in the template), parser and
-  validator. The type checker rejects a type whose parser produces a
-  structure its validator does not check.
+  by `sks-tool types` and repeated as a comment in the template), parser,
+  validator and companion files. The type checker rejects a type whose parser
+  produces a structure its validator does not check.
 
 To add a document type, add its `docs/`, `parsers/` and `validators/`
 packages and its template, and register it in `src/sks_tool/doctypes.py`.

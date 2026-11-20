@@ -47,10 +47,10 @@ The document types are:
 | `glossary` | What the project's terms mean. |
 
 Each template (see [Creating a document](#creating-a-document)) starts with a
-comment stating what the document is for. The bodies of `requirements` and
-`glossary` documents are defined below; the blocks of the other types are not
-defined yet, so their templates hold only the front matter and that comment,
-and every body is accepted.
+comment stating what the document is for. The bodies of `requirements`,
+`glossary` and `overview` documents are defined below; the blocks of `specs`
+documents are not defined yet, so their template holds only the front matter
+and that comment, and every body is accepted.
 
 ### Requirements documents
 
@@ -118,6 +118,41 @@ file" before "Logger"). A document must contain at least one term. The
 `glossary` template holds four example terms for the same fictional data
 logger; replace them with your own.
 
+### Overview documents
+
+An `overview` document has exactly three sections, in this order, and
+nothing else (outside them, only blank lines and `<!-- comments -->`):
+
+```markdown
+## Summary
+
+A flight data logger that records the aircraft's sensor data to non-volatile memory.
+
+## Purpose
+
+To give the airframe team the vibration data it needs to confirm the structure stays within its limits.
+
+## System diagram
+
+![System diagram](system_diagram.drawio.svg)
+```
+
+- **Summary**: what the system is, in one paragraph on one line, at most 200
+  characters.
+- **Purpose**: why it is built, with the same limits.
+- **System diagram**: a single Markdown image on its own line, pointing to a
+  `.drawio.svg` file by a path relative to the document's folder. The file
+  must exist and carry an editable draw.io diagram.
+
+A `.drawio.svg` file is both the editable diagram and the image the page
+shows, so there is no separate export to keep up to date. Edit it with the
+[Draw.io Integration](https://marketplace.visualstudio.com/items?itemName=hediet.vscode-drawio)
+extension for VS Code, or with draw.io itself; a plain SVG renamed to
+`.drawio.svg` is rejected, since it cannot be edited as a diagram.
+
+A project may have several overviews, for example one per subsystem, each in
+its own folder.
+
 ## Installing
 
 `sks-tool` is meant to be added to a technical repository as a git submodule
@@ -141,7 +176,9 @@ uv run --project tools/sks-tool sks-tool types                          # list t
 uv run --project tools/sks-tool sks-tool new requirements docs/reqs.md  # create one from its template
 ```
 
-`new` refuses to overwrite an existing file.
+`new overview` also creates a blank `system_diagram.drawio.svg` next to the
+document, for its system diagram. `new` refuses to overwrite an existing
+file, and writes nothing if any of the files it would create already exists.
 
 ## Validating documents
 

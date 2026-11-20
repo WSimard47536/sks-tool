@@ -42,10 +42,17 @@ class DocType[T]:
     summary: str
     parser: Parser[T]
     validator: Validator[T]
+    companions: tuple[str, ...] = ()
+    """Files ``new`` creates next to the document, from ``sks_tool/templates/<file>``,
+    such as the diagram an overview shows."""
 
     def template(self) -> str:
         """Return the text a new document of this type starts from."""
         return resources.files("sks_tool").joinpath("templates", f"{self.name}.md").read_text(encoding="utf-8")
+
+    def companion(self, file_name: str) -> bytes:
+        """Return the content of one of the ``companions`` files."""
+        return resources.files("sks_tool").joinpath("templates", file_name).read_bytes()
 
 
 _REQUIREMENTS = DocType(
@@ -65,6 +72,7 @@ _OVERVIEW = DocType(
     "What the project is, what it does and why, with a system diagram.",
     OverviewParser(),
     OverviewValidator(),
+    companions=("system_diagram.drawio.svg",),
 )
 _GLOSSARY = DocType(
     "glossary",

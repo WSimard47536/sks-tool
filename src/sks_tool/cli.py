@@ -41,17 +41,28 @@ def new(
     doc_type: Annotated[str, typer.Argument(metavar="TYPE", help="Document type; see `sks-tool types`.")],
     path: Annotated[Path, typer.Argument(help="Where to create the document.")],
 ) -> None:
-    """Create a new document from the template for TYPE."""
+    """Create a new document from the template for TYPE.
+
+    An overview also gets a blank system_diagram.drawio.svg next to it.
+    Nothing is written if any of the files already exists.
+    """
     if doc_type not in DOC_TYPES:
         typer.echo(f"Unknown document type '{doc_type}'. Expected one of: {', '.join(DOC_TYPES)}.", err=True)
         raise typer.Exit(EXIT_USAGE)
-    if path.exists():
-        typer.echo(f"{path} already exists; it was not overwritten.", err=True)
+    chosen = DOC_TYPES[doc_type]
+    companions = [path.parent / name for name in chosen.companions]
+    existing = [target for target in (path, *companions) if target.exists()]
+    if existing:
+        listed = ", ".join(str(target) for target in existing)
+        typer.echo(f"{listed} already exist(s); nothing was written.", err=True)
         raise typer.Exit(EXIT_USAGE)
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(DOC_TYPES[doc_type].template(), encoding="utf-8", newline="\n")
-    typer.echo(f"Created {path} ({doc_type}). Add it to {MANIFEST_NAME} to have it validated.")
+    path.write_text(chosen.template(), encoding="utf-8", newline="\n")
+    for name, target in zip(chosen.companions, companions, strict=True):
+        target.write_bytes(chosen.companion(name))
+    created = " and ".join(str(target) for target in (path, *companions))
+    typer.echo(f"Created {created} ({doc_type}). Add {path} to {MANIFEST_NAME} to have it validated.")
 
 
 @app.command()

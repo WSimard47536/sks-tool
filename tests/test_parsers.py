@@ -5,6 +5,7 @@ import pytest
 from sks_tool.docs.base import Metadata
 from sks_tool.docs.glossary.doc import GlossaryDoc
 from sks_tool.docs.glossary.term.block import Term
+from sks_tool.docs.overview.doc import Diagram, OverviewDoc, TextSection
 from sks_tool.docs.requirements.doc import RequirementsDoc
 from sks_tool.docs.requirements.requirement.block import Requirement
 from sks_tool.doctypes import DOC_TYPES
@@ -12,6 +13,7 @@ from sks_tool.document import Document, load_document
 from sks_tool.findings import ParserFinding
 from sks_tool.parsers.base import CommonParser
 from sks_tool.parsers.glossary.parser import GlossaryParser
+from sks_tool.parsers.overview.parser import OverviewParser
 from sks_tool.parsers.requirements.parser import RequirementsParser
 
 FULL = {"title": "A title", "description": "A description."}
@@ -88,7 +90,7 @@ def test_common_parser_hint_lists_the_known_types() -> None:
     assert all(name in findings[0].hint for name in DOC_TYPES)
 
 
-@pytest.mark.parametrize("name", ["specs", "overview"])
+@pytest.mark.parametrize("name", ["specs"])
 def test_type_parser_reads_any_body_while_blocks_are_undefined(name: str) -> None:
     document = make_document({"type": name, **FULL}, body="Anything\n")
     metadata = Metadata(doc_type=name, title="A title", description="A description.")
@@ -316,3 +318,84 @@ def test_glossary_format_problems_are_parse_findings(body: str, expected: list[t
     doc, findings = parse_glossary(body)
     assert findings == expected
     assert len(doc.terms) == kept
+
+
+# --- OverviewParser -----------------------------------------------------------
+
+OVERVIEW_METADATA = Metadata(doc_type="overview", title="A title", description="A description.")
+SUMMARY_SECTION = "## Summary\n\nWhat it is.\n\n"  # lines 6-9
+PURPOSE_SECTION = "## Purpose\n\nWhy it is built.\n\n"  # lines 10-13 when it follows the summary
+DIAGRAM_SECTION = "## System diagram\n\n![System diagram](system_diagram.drawio.svg)\n"  # lines 14-16 when last
+
+
+def parse_overview(body: str) -> tuple[OverviewDoc, list[tuple[str, int | None]]]:
+    """Parse ``body`` as if it started on line 6; return the structure and (code, line) of each finding."""
+    doc, findings = OverviewParser().parse(make_document({}, body=body), OVERVIEW_METADATA)
+    assert doc is not None
+    return doc, [(finding.code, finding.line) for finding in findings]
+
+
+def test_the_three_sections_are_read_with_their_lines() -> None:
+    doc, findings = parse_overview(SUMMARY_SECTION + PURPOSE_SECTION + DIAGRAM_SECTION)
+    assert findings == []
+    assert doc.metadata is OVERVIEW_METADATA
+    assert doc.summary == TextSection(text="What it is.", line=8)
+    assert doc.purpose == TextSection(text="Why it is built.", line=12)
+    assert doc.system_diagram == Diagram(alt="System diagram", path="system_diagram.drawio.svg", line=16)
+
+
+def test_a_paragraph_over_several_lines_is_kept_whole_for_the_validator() -> None:
+    doc, findings = parse_overview("## Summary\n\nWhat\nit is.\n\n" + PURPOSE_SECTION + DIAGRAM_SECTION)
+    assert findings == []
+    assert doc.summary is not None
+    assert doc.summary.text == "What\nit is."
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (PURPOSE_SECTION + DIAGRAM_SECTION, [("overview-section-missing", None)]),
+        (SUMMARY_SECTION + PURPOSE_SECTION, [("overview-section-missing", None)]),
+        (
+            SUMMARY_SECTION + "## Scope\n\nAnything.\n\n" + PURPOSE_SECTION + DIAGRAM_SECTION,
+            [("overview-section-unknown", 10)],
+        ),
+        (SUMMARY_SECTION + "## summary\n\nx\n\n" + PURPOSE_SECTION + DIAGRAM_SECTION, [("overview-section-unknown", 10)]),
+        (
+            SUMMARY_SECTION + SUMMARY_SECTION + PURPOSE_SECTION + DIAGRAM_SECTION,
+            [("overview-section-repeated", 10)],
+        ),
+        (PURPOSE_SECTION + SUMMARY_SECTION + DIAGRAM_SECTION, [("overview-section-out-of-order", 10)]),
+        ("## Summary\n\n" + PURPOSE_SECTION + DIAGRAM_SECTION, [("overview-section-empty", 6)]),
+        (
+            "## Summary\n\nWhat it is.\n\nMore.\n- a list\n\n" + PURPOSE_SECTION + DIAGRAM_SECTION,
+            [("overview-text-unexpected", 10)],
+        ),
+        ("## Summary\n\nWhat it is.\n- a list\n\n" + PURPOSE_SECTION + DIAGRAM_SECTION, [("overview-text-unexpected", 9)]),
+        (
+            SUMMARY_SECTION + PURPOSE_SECTION + "## System diagram\n\nNo image here.\n",
+            [
+                ("overview-text-unexpected", 16),
+                ("diagram-missing", 14),
+            ],
+        ),
+        (
+            SUMMARY_SECTION + PURPOSE_SECTION + '## System diagram\n\n<img src="system_diagram.drawio.svg">\n',
+            [("overview-text-unexpected", 16), ("diagram-missing", 14)],
+        ),
+        (SUMMARY_SECTION + PURPOSE_SECTION + DIAGRAM_SECTION + "![Other](other.drawio.svg)\n", [("diagram-repeated", 17)]),
+        ("Intro\n\n" + SUMMARY_SECTION + PURPOSE_SECTION + DIAGRAM_SECTION, [("text-outside-section", 6)]),
+    ],
+)
+def test_overview_format_problems_are_parse_findings(body: str, expected: list[tuple[str, int | None]]) -> None:
+    _, findings = parse_overview(body)
+    assert findings == expected
+
+
+def test_the_first_of_repeated_sections_and_images_is_used() -> None:
+    body = "## Summary\n\nFirst.\n\n## Summary\n\nSecond.\n\n" + PURPOSE_SECTION + DIAGRAM_SECTION + "![b](b.drawio.svg)\n"
+    doc, _ = parse_overview(body)
+    assert doc.summary is not None
+    assert doc.summary.text == "First."
+    assert doc.system_diagram is not None
+    assert doc.system_diagram.path == "system_diagram.drawio.svg"
